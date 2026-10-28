@@ -1,13 +1,6 @@
 package com.example.ui.monitor
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,28 +20,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.HourglassEmpty
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -70,11 +57,11 @@ import java.util.Locale
 
 @Composable
 fun SessionMonitorScreen(
-    sessionState: ActiveSessionUiState,
+    sessionState: ActiveSessionUiState = ActiveSessionUiState(),
     timeUntilMidnight: String,
     recentLogs: List<ExtensionSessionLog>,
-    onGrantExtension: (String, String) -> Unit,
-    onCloseApp: (String) -> Unit,
+    onGrantExtension: (String, String) -> Unit = { _, _ -> },
+    onCloseApp: (String) -> Unit = {},
     onResetTodayUsage: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -86,15 +73,6 @@ fun SessionMonitorScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
     ) {
-        // Active Session Hero Card
-        item {
-            ActiveSessionHeroCard(
-                sessionState = sessionState,
-                onGrantExtension = onGrantExtension,
-                onCloseApp = onCloseApp
-            )
-        }
-
         // Daily Midnight Reset Information Card
         item {
             MidnightResetCard(
@@ -150,7 +128,7 @@ fun SessionMonitorScreen(
                             textAlign = TextAlign.Center
                         )
                         Text(
-                            text = "When an app reaches its baseline limit, grant +5m to see live session logs.",
+                            text = "When a monitored app limit expires, temporary extensions granted from the overlay or notification appear here.",
                             style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF64748B)),
                             textAlign = TextAlign.Center
                         )
@@ -160,262 +138,6 @@ fun SessionMonitorScreen(
         } else {
             items(recentLogs, key = { it.id }) { log ->
                 ExtensionLogItem(log = log)
-            }
-        }
-    }
-}
-
-@Composable
-fun ActiveSessionHeroCard(
-    sessionState: ActiveSessionUiState,
-    onGrantExtension: (String, String) -> Unit,
-    onCloseApp: (String) -> Unit
-) {
-    val isAppActive = sessionState.foregroundPackage != null
-    val isUnderExt = sessionState.isUnderActiveExtension
-    val remSec = sessionState.extensionRemainingSeconds
-    val mins = remSec / 60
-    val secs = remSec % 60
-    val formattedCountdown = String.format("%02d:%02d", mins, secs)
-
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = if (isUnderExt) 1.05f else 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseScale"
-    )
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("active_session_card"),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF131D31)),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = Brush.verticalGradient(
-                colors = if (isUnderExt) {
-                    listOf(EmeraldSuccess, EmeraldSuccess.copy(0.3f))
-                } else if (sessionState.isBaselineExhausted) {
-                    listOf(CoralAlert, CoralAlert.copy(0.3f))
-                } else {
-                    listOf(CyanPrimary, IndigoSecondary.copy(0.4f))
-                }
-            ),
-            width = 1.5.dp
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Live Status Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (isUnderExt) EmeraldSuccess.copy(0.2f) else CyanPrimary.copy(0.2f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(if (isUnderExt) EmeraldSuccess else CyanPrimary)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (isUnderExt) "TEMPORARY EXTENSION WINDOW" else "FOREGROUND STATUS",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = if (isUnderExt) EmeraldSuccess else CyanLight,
-                                fontSize = 10.sp
-                            )
-                        )
-                    }
-                }
-
-                Text(
-                    text = "Immutable Baseline",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        color = Color(0xFF64748B),
-                        fontWeight = FontWeight.Medium
-                    )
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // App Name or Idle
-            Text(
-                text = sessionState.foregroundAppName ?: "No Target App in Foreground",
-                style = MaterialTheme.typography.headlineSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                ),
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Subtitle
-            Text(
-                text = if (sessionState.isMonitored) {
-                    "Configured Daily Baseline: ${sessionState.baselineMinutes} minutes"
-                } else {
-                    "Open a monitored app or launch one from the Test Lab"
-                },
-                style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF94A3B8))
-            )
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // Visual Distinction: Baseline Used vs Overtime
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF1B2844),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceAround
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "Baseline Used",
-                            style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF94A3B8))
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "${sessionState.baselineUsedSeconds / 60}m / ${sessionState.baselineMinutes}m",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = if (sessionState.isBaselineExhausted) CoralAlert else CyanLight
-                            )
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .height(36.dp)
-                            .background(Color(0xFF28385A))
-                    )
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "Temporary Overtime",
-                            style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF94A3B8))
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "+${sessionState.overtimeUsedSeconds / 60}m",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = EmeraldSuccess
-                            )
-                        )
-                    }
-                }
-            }
-
-            // Extension countdown timer if active
-            AnimatedVisibility(visible = isUnderExt) {
-                Column(
-                    modifier = Modifier.padding(top = 18.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFF0F172A),
-                        border = CardDefaults.outlinedCardBorder().copy(
-                            brush = Brush.horizontalGradient(listOf(EmeraldSuccess, CyanPrimary)),
-                            width = 1.dp
-                        ),
-                        modifier = Modifier.scale(pulseScale)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Timer,
-                                contentDescription = null,
-                                tint = EmeraldSuccess,
-                                modifier = Modifier.size(22.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "$formattedCountdown remaining in +5m extension",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = "⚡ Exiting the app terminates this extension immediately. Daily baseline remains unaffected.",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = Color(0xFF94A3B8),
-                            fontSize = 11.sp
-                        ),
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-
-            // Quick Actions if app is in foreground
-            if (sessionState.foregroundPackage != null && sessionState.isMonitored) {
-                Spacer(modifier = Modifier.height(18.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            onGrantExtension(
-                                sessionState.foregroundPackage,
-                                sessionState.foregroundAppName ?: sessionState.foregroundPackage
-                            )
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldSuccess)
-                    ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("+5 Minutes", fontWeight = FontWeight.Bold)
-                    }
-
-                    OutlinedButton(
-                        onClick = { onCloseApp(sessionState.foregroundPackage) },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = CoralAlert),
-                        border = ButtonDefaults.outlinedButtonBorder.copy(
-                            brush = Brush.horizontalGradient(listOf(CoralAlert, CoralAlert.copy(0.6f)))
-                        )
-                    ) {
-                        Icon(imageVector = Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Close App", fontWeight = FontWeight.SemiBold)
-                    }
-                }
             }
         }
     }
