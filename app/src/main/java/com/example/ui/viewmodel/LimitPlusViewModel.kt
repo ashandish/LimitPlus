@@ -193,15 +193,11 @@ class LimitPlusViewModel(
     }
 
     fun grantExtension(packageName: String, appName: String) {
-        viewModelScope.launch {
-            repository.grantFiveMinuteExtension(packageName, appName)
-        }
+        repository.grantFiveMinuteExtension(packageName, appName)
     }
 
     fun closeTargetApp(packageName: String) {
-        viewModelScope.launch {
-            repository.closeTargetApp(packageName)
-        }
+        repository.closeTargetApp(packageName)
     }
 
     fun dismissPrompt() {

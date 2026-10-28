@@ -101,7 +101,7 @@ class FloatingOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                 @Suppress("DEPRECATION")
                 WindowManager.LayoutParams.TYPE_PHONE
             },
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.CENTER
@@ -116,11 +116,16 @@ class FloatingOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             isFocusableInTouchMode = true
             setOnKeyListener { _, keyCode, event ->
                 if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-                    removeOverlay()
-                    serviceScope.launch {
-                        LimitPlusApp.instance.repository.closeTargetApp(targetPackage)
-                        stopSelf()
+                    LimitPlusApp.instance.repository.closeTargetApp(targetPackage)
+                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_HOME)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     }
+                    try {
+                        startActivity(homeIntent)
+                    } catch (_: Exception) {}
+                    removeOverlay()
+                    stopSelf()
                     true
                 } else {
                     false
@@ -135,18 +140,21 @@ class FloatingOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                         baselineMinutes = baselineMinutes,
                         isRelaunch = isRelaunch,
                         onAddFiveMinutes = {
+                            LimitPlusApp.instance.repository.grantFiveMinuteExtension(targetPackage, appName)
                             removeOverlay()
-                            serviceScope.launch {
-                                LimitPlusApp.instance.repository.grantFiveMinuteExtension(targetPackage, appName)
-                                stopSelf()
-                            }
+                            stopSelf()
                         },
                         onCloseApp = {
-                            removeOverlay()
-                            serviceScope.launch {
-                                LimitPlusApp.instance.repository.closeTargetApp(targetPackage)
-                                stopSelf()
+                            LimitPlusApp.instance.repository.closeTargetApp(targetPackage)
+                            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                                addCategory(Intent.CATEGORY_HOME)
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
                             }
+                            try {
+                                startActivity(homeIntent)
+                            } catch (_: Exception) {}
+                            removeOverlay()
+                            stopSelf()
                         }
                     )
                 }

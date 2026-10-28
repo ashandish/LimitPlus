@@ -45,10 +45,15 @@ class OverlayDialogActivity : ComponentActivity() {
         // Handle hardware back button: gracefully close the target app and remove task
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                lifecycleScope.launch {
-                    LimitPlusApp.instance.repository.closeTargetApp(packageName)
-                    finishAndRemoveTask()
+                LimitPlusApp.instance.repository.closeTargetApp(packageName)
+                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
+                try {
+                    startActivity(homeIntent)
+                } catch (_: Exception) {}
+                finishAndRemoveTask()
             }
         })
 
@@ -60,16 +65,19 @@ class OverlayDialogActivity : ComponentActivity() {
                     baselineMinutes = baselineMinutes,
                     isRelaunch = isRelaunch,
                     onAddFiveMinutes = {
+                        LimitPlusApp.instance.repository.grantFiveMinuteExtension(packageName, appName)
                         finishAndRemoveTask()
-                        lifecycleScope.launch {
-                            LimitPlusApp.instance.repository.grantFiveMinuteExtension(packageName, appName)
-                        }
                     },
                     onCloseApp = {
-                        finishAndRemoveTask()
-                        lifecycleScope.launch {
-                            LimitPlusApp.instance.repository.closeTargetApp(packageName)
+                        LimitPlusApp.instance.repository.closeTargetApp(packageName)
+                        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                            addCategory(Intent.CATEGORY_HOME)
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
                         }
+                        try {
+                            startActivity(homeIntent)
+                        } catch (_: Exception) {}
+                        finishAndRemoveTask()
                     },
                     modifier = Modifier.fillMaxSize()
                 )

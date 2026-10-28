@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import android.app.ActivityManager
+import android.app.PendingIntent
 import android.app.usage.UsageStats
 import android.app.usage.UsageStatsManager
 import android.content.Context
@@ -418,25 +419,26 @@ class AppLimitRepository(
      * Grants a temporary 5-minute extension window.
      * Baseline limit is strictly preserved!
      */
-    suspend fun grantFiveMinuteExtension(packageName: String, appName: String) {
+    fun grantFiveMinuteExtension(packageName: String, appName: String) {
         val now = System.currentTimeMillis()
         val durationMs = 5 * 60 * 1000L
         _activeExtensionPackage.value = packageName
         _activeExtensionExpiresAt.value = now + durationMs
         _currentPrompt.value = null
 
-        val today = getTodayDateString()
-        usageDao.incrementExtensionCount(packageName, today)
-
-        logDao.insert(
-            ExtensionSessionLog(
-                packageName = packageName,
-                appName = appName,
-                timestamp = now,
-                extensionMinutes = 5,
-                status = "GRANTED"
+        scope.launch(Dispatchers.IO) {
+            val today = getTodayDateString()
+            usageDao.incrementExtensionCount(packageName, today)
+            logDao.insert(
+                ExtensionSessionLog(
+                    packageName = packageName,
+                    appName = appName,
+                    timestamp = now,
+                    extensionMinutes = 5,
+                    status = "GRANTED"
+                )
             )
-        )
+        }
     }
 
     /**
@@ -444,22 +446,14 @@ class AppLimitRepository(
      * Prevents the app from minimizing to Picture-in-Picture or a corner window.
      * Temporary extension is terminated immediately.
      */
-    suspend fun closeTargetApp(packageName: String) {
+    fun closeTargetApp(packageName: String) {
         _currentPrompt.value = null
         _activeExtensionPackage.value = null
         _activeExtensionExpiresAt.value = null
         _activeForegroundPackage.value = null
         suppressPackage(packageName, 6000L)
 
-        logDao.insert(
-            ExtensionSessionLog(
-                packageName = packageName,
-                appName = configDao.getByPackage(packageName)?.appName ?: packageName,
-                status = "TERMINATED_USER_CLOSED"
-            )
-        )
-
-        // 1. Immediately request transient audio focus to stop media/video playback.
+        // 1. Immediately request audio focus to halt playback in YouTube/media apps
         try {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -467,45 +461,62 @@ class AppLimitRepository(
                     .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                     .build()
-                val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                     .setAudioAttributes(audioAttributes)
                     .build()
                 audioManager?.requestAudioFocus(focusRequest)
                 scope.launch {
-                    delay(1000L)
+                    delay(1500L)
                     audioManager?.abandonAudioFocusRequest(focusRequest)
                 }
             } else {
                 @Suppress("DEPRECATION")
-                audioManager?.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                audioManager?.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
                 scope.launch {
-                    delay(1000L)
+                    delay(1500L)
                     @Suppress("DEPRECATION")
                     audioManager?.abandonAudioFocus(null)
                 }
             }
         } catch (_: Exception) {}
 
-        // 2. Launch Home launcher with clean flags to bring the device Home immediately
+        // 2. Bring user directly to the Home screen immediately
         val homeIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
-        context.startActivity(homeIntent)
+        try {
+            context.startActivity(homeIntent)
+        } catch (_: Exception) {}
+        try {
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                1001,
+                homeIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            pendingIntent.send()
+        } catch (_: Exception) {}
 
-        // 3. Kill background processes immediately and asynchronously
+        // 3. Kill background processes immediately
         val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         try {
             activityManager?.killBackgroundProcesses(packageName)
         } catch (_: Exception) {}
 
+        // 4. Repeat process termination asynchronously in application scope
         scope.launch(Dispatchers.IO) {
             try {
-                delay(150L)
+                logDao.insert(
+                    ExtensionSessionLog(
+                        packageName = packageName,
+                        appName = configDao.getByPackage(packageName)?.appName ?: packageName,
+                        status = "TERMINATED_USER_CLOSED"
+                    )
+                )
+                delay(200L)
                 activityManager?.killBackgroundProcesses(packageName)
-                delay(350L)
+                delay(400L)
                 activityManager?.killBackgroundProcesses(packageName)
             } catch (_: Exception) {}
         }
