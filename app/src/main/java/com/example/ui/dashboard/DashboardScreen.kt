@@ -80,7 +80,8 @@ fun DashboardScreen(
     onSearchQueryChange: (String) -> Unit,
     onToggleMonitored: (String, Boolean) -> Unit,
     onUpdateBaseline: (String, Int) -> Unit,
-    onSimulateSession: (String) -> Unit,
+    hasMissingPermissions: Boolean = false,
+    onNavigateToPermissions: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedAppForBaseline by remember { mutableStateOf<InstalledAppItem?>(null) }
@@ -91,6 +92,58 @@ fun DashboardScreen(
             .padding(horizontal = 16.dp)
     ) {
         Spacer(modifier = Modifier.height(12.dp))
+
+        if (hasMissingPermissions) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToPermissions() }
+                    .testTag("permissions_warning_banner"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = CoralAlert.copy(alpha = 0.15f)),
+                border = CardDefaults.outlinedCardBorder().copy(
+                    brush = Brush.horizontalGradient(listOf(CoralAlert, CoralAlert.copy(0.4f))),
+                    width = 1.dp
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = CoralAlert,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Permissions Setup Required",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        )
+                        Text(
+                            text = "Tap to grant Usage Access & Draw Over Apps for full background protection.",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = Color(0xFFFDA4AF),
+                                fontSize = 11.sp
+                            )
+                        )
+                    }
+                    Text(
+                        text = "Enable",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = CoralAlert
+                        )
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
 
         // Search Bar
         OutlinedTextField(
@@ -197,8 +250,7 @@ fun DashboardScreen(
                     AppLimitCard(
                         app = app,
                         onToggle = { isChecked -> onToggleMonitored(app.packageName, isChecked) },
-                        onEditBaseline = { selectedAppForBaseline = app },
-                        onSimulate = { onSimulateSession(app.packageName) }
+                        onEditBaseline = { selectedAppForBaseline = app }
                     )
                 }
             }
@@ -262,7 +314,6 @@ fun AppLimitCard(
     app: InstalledAppItem,
     onToggle: (Boolean) -> Unit,
     onEditBaseline: () -> Unit,
-    onSimulate: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val baselineSeconds = app.baselineMinutes * 60L

@@ -114,7 +114,7 @@ fun PermissionsScreen(
 
                     Spacer(modifier = Modifier.width(14.dp))
 
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = if (permissions.allEssentialGranted) "Permissions Ready" else "Permissions Setup",
                             style = MaterialTheme.typography.titleMedium.copy(
@@ -125,13 +125,71 @@ fun PermissionsScreen(
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = if (permissions.allEssentialGranted) {
-                                "All essential permissions granted for real-time app limit enforcement."
+                                "All essential permissions granted for real-time background protection."
                             } else {
-                                "Grant Usage Access and Draw Over Apps for floating limit dialogues."
+                                "Tap each item below to grant required Android system access."
                             },
                             style = MaterialTheme.typography.bodySmall.copy(
                                 color = Color(0xFF94A3B8),
                                 fontSize = 11.5.sp
+                            )
+                        )
+                    }
+                }
+
+                if (!permissions.allEssentialGranted || !permissions.hasBatteryOptimizationIgnored || !permissions.hasNotificationPermission) {
+                    val (nextActionTitle, nextAction) = when {
+                        !permissions.hasNotificationPermission -> "Grant Notifications" to onRequestNotificationPermission
+                        !permissions.hasUsageAccess -> "Grant Usage Access" to {
+                            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            context.startActivity(intent)
+                        }
+                        !permissions.hasOverlayPermission -> "Grant Draw Over Apps" to {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                val intent = Intent(
+                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Uri.parse("package:${context.packageName}")
+                                ).apply {
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                }
+                                context.startActivity(intent)
+                            }
+                        }
+                        else -> "Allow Background Execution" to {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                val intent = Intent(
+                                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                    Uri.parse("package:${context.packageName}")
+                                ).apply {
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                }
+                                try {
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {
+                                    val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                    }
+                                    context.startActivity(fallback)
+                                }
+                            }
+                        }
+                    }
+
+                    Button(
+                        onClick = nextAction,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                    ) {
+                        Text(
+                            text = "Next: $nextActionTitle",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
                             )
                         )
                     }

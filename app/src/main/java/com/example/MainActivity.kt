@@ -21,7 +21,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -55,7 +54,6 @@ import com.example.ui.dashboard.DashboardScreen
 import com.example.ui.monitor.SessionMonitorScreen
 import com.example.ui.overlay.OverlayPromptCard
 import com.example.ui.permissions.PermissionsScreen
-import com.example.ui.simulator.TestLabScreen
 import com.example.ui.theme.CoralAlert
 import com.example.ui.theme.CyanLight
 import com.example.ui.theme.CyanPrimary
@@ -81,12 +79,6 @@ class MainActivity : ComponentActivity() {
                     viewModel.checkPermissions()
                 }
 
-                LaunchedEffect(Unit) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    }
-                }
-
                 val apps by viewModel.appsList.collectAsState()
                 val searchQuery by viewModel.searchQuery.collectAsState()
                 val sessionState by viewModel.activeSessionState.collectAsState()
@@ -96,6 +88,18 @@ class MainActivity : ComponentActivity() {
                 val promptData by viewModel.currentPrompt.collectAsState()
 
                 var selectedTab by remember { mutableIntStateOf(0) }
+
+                // Initial install/launch permission check
+                LaunchedEffect(Unit) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    val currentPerms = viewModel.checkPermissions()
+                    // If essential permissions are missing on install, guide user to permissions tab
+                    if (!currentPerms.allEssentialGranted) {
+                        selectedTab = 2
+                    }
+                }
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     Scaffold(
@@ -185,20 +189,6 @@ class MainActivity : ComponentActivity() {
                                 NavigationBarItem(
                                     selected = selectedTab == 2,
                                     onClick = { selectedTab = 2 },
-                                    icon = { Icon(Icons.Default.Science, contentDescription = "Simulator") },
-                                    label = { Text("Simulator", fontWeight = FontWeight.SemiBold) },
-                                    modifier = Modifier.testTag("nav_simulator"),
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = CyanLight,
-                                        selectedTextColor = CyanLight,
-                                        indicatorColor = CyanPrimary.copy(alpha = 0.25f),
-                                        unselectedIconColor = Color(0xFF94A3B8),
-                                        unselectedTextColor = Color(0xFF94A3B8)
-                                    )
-                                )
-                                NavigationBarItem(
-                                    selected = selectedTab == 3,
-                                    onClick = { selectedTab = 3 },
                                     icon = { Icon(Icons.Default.Security, contentDescription = "Permissions") },
                                     label = { Text("Permissions", fontWeight = FontWeight.SemiBold) },
                                     modifier = Modifier.testTag("nav_permissions"),
@@ -226,10 +216,8 @@ class MainActivity : ComponentActivity() {
                                     onSearchQueryChange = viewModel::setSearchQuery,
                                     onToggleMonitored = viewModel::toggleMonitored,
                                     onUpdateBaseline = viewModel::updateBaseline,
-                                    onSimulateSession = { pkg ->
-                                        selectedTab = 2 // Switch to simulator
-                                        viewModel.simulateForegroundApp(pkg)
-                                    }
+                                    hasMissingPermissions = !permissions.allEssentialGranted,
+                                    onNavigateToPermissions = { selectedTab = 2 }
                                 )
                                 1 -> SessionMonitorScreen(
                                     sessionState = sessionState,
@@ -239,14 +227,7 @@ class MainActivity : ComponentActivity() {
                                     onCloseApp = viewModel::closeTargetApp,
                                     onResetTodayUsage = viewModel::resetTodayUsage
                                 )
-                                2 -> TestLabScreen(
-                                    apps = apps,
-                                    onSimulateForeground = viewModel::simulateForegroundApp,
-                                    onSimulateAddSeconds = viewModel::simulateAddUsageSeconds,
-                                    onSimulateExitToHome = viewModel::simulateExitToHome,
-                                    onTriggerPrompt = viewModel::triggerTestPrompt
-                                )
-                                3 -> PermissionsScreen(
+                                2 -> PermissionsScreen(
                                     permissions = permissions,
                                     onRequestNotificationPermission = {
                                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
