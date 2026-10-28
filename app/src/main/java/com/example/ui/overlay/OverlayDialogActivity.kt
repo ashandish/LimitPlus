@@ -45,14 +45,7 @@ class OverlayDialogActivity : ComponentActivity() {
         // Handle hardware back button: gracefully close the target app and remove task
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                LimitPlusApp.instance.repository.closeTargetApp(packageName)
-                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                    addCategory(Intent.CATEGORY_HOME)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                try {
-                    startActivity(homeIntent)
-                } catch (_: Exception) {}
+                CloseAppActivity.start(this@OverlayDialogActivity, packageName)
                 finishAndRemoveTask()
             }
         })
@@ -69,14 +62,7 @@ class OverlayDialogActivity : ComponentActivity() {
                         finishAndRemoveTask()
                     },
                     onCloseApp = {
-                        LimitPlusApp.instance.repository.closeTargetApp(packageName)
-                        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                            addCategory(Intent.CATEGORY_HOME)
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                        }
-                        try {
-                            startActivity(homeIntent)
-                        } catch (_: Exception) {}
+                        CloseAppActivity.start(this@OverlayDialogActivity, packageName)
                         finishAndRemoveTask()
                     },
                     modifier = Modifier.fillMaxSize()

@@ -86,20 +86,6 @@ class AppLimitRepository(
         usageDao.getAllForDateFlow(date)
     }
 
-    @Volatile
-    private var suppressedPackage: String? = null
-    @Volatile
-    private var suppressedUntil: Long = 0L
-
-    fun suppressPackage(packageName: String, durationMs: Long = 6000L) {
-        suppressedPackage = packageName
-        suppressedUntil = System.currentTimeMillis() + durationMs
-    }
-
-    fun isPackageSuppressed(packageName: String): Boolean {
-        return suppressedPackage == packageName && System.currentTimeMillis() < suppressedUntil
-    }
-
     fun getTodayDateString(): String {
         return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
     }
@@ -244,7 +230,6 @@ class AppLimitRepository(
             val today = getTodayDateString()
 
             for (config in configs) {
-                if (isPackageSuppressed(config.packageName)) continue
                 val stats = statsMap[config.packageName] ?: continue
                 val systemTotalSeconds = stats.totalTimeInForeground / 1000L
                 if (systemTotalSeconds <= 0L) continue
@@ -294,7 +279,7 @@ class AppLimitRepository(
         val activeExtPkg = _activeExtensionPackage.value
         val extExpiresAt = _activeExtensionExpiresAt.value
 
-        if (newPackage == null || newPackage == context.packageName || isPackageSuppressed(newPackage)) {
+        if (newPackage == null || newPackage == context.packageName) {
             return
         }
 
@@ -333,8 +318,6 @@ class AppLimitRepository(
      * while the user is actively using an app.
      */
     suspend fun recordUsageTick(packageName: String, elapsedSeconds: Long) {
-        if (isPackageSuppressed(packageName)) return
-
         val config = configDao.getByPackage(packageName) ?: return
         if (!config.isMonitored) return
 
@@ -451,9 +434,8 @@ class AppLimitRepository(
         _activeExtensionPackage.value = null
         _activeExtensionExpiresAt.value = null
         _activeForegroundPackage.value = null
-        suppressPackage(packageName, 6000L)
 
-        // 1. Immediately request audio focus to halt playback in YouTube/media apps
+        // 1. Immediately request audio focus to halt playback in YouTube/media apps and stop PiP
         try {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -480,10 +462,16 @@ class AppLimitRepository(
             }
         } catch (_: Exception) {}
 
-        // 2. Bring user directly to the Home screen immediately
+        // 2. Bring user directly to the Home screen immediately via CloseAppActivity and fallback
+        try {
+            com.example.ui.overlay.CloseAppActivity.start(context, packageName)
+        } catch (_: Exception) {}
+
         val homeIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
         }
         try {
             context.startActivity(homeIntent)
@@ -523,9 +511,6 @@ class AppLimitRepository(
     }
 
     fun showPrompt(data: PromptData) {
-        if (isPackageSuppressed(data.packageName)) {
-            return
-        }
         val current = _currentPrompt.value
         // If the prompt is already displayed for this target package, do not re-emit.
         // This keeps the modal popup completely still and eliminates jitter/movement.

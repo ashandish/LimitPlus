@@ -53,6 +53,15 @@
             android:taskAffinity="com.aistudio.limitplus.overlay"
             android:theme="@style/Theme.LimitPlus.Translucent" />
 
+        <!-- Transient Activity to reliably exit target app and transition to Home screen -->
+        <activity
+            android:name=".ui.overlay.CloseAppActivity"
+            android:autoRemoveFromRecents="true"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <!-- Floating Window Overlay Service -->
         <service
             android:name=".service.FloatingOverlayService"

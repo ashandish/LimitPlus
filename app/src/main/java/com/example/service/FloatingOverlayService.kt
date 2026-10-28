@@ -26,6 +26,7 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.LimitPlusApp
+import com.example.ui.overlay.CloseAppActivity
 import com.example.ui.overlay.OverlayPromptCard
 import com.example.ui.theme.LimitPlusTheme
 import kotlinx.coroutines.CoroutineScope
@@ -116,14 +117,7 @@ class FloatingOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             isFocusableInTouchMode = true
             setOnKeyListener { _, keyCode, event ->
                 if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-                    LimitPlusApp.instance.repository.closeTargetApp(targetPackage)
-                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                        addCategory(Intent.CATEGORY_HOME)
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    try {
-                        startActivity(homeIntent)
-                    } catch (_: Exception) {}
+                    CloseAppActivity.start(this@FloatingOverlayService, targetPackage)
                     removeOverlay()
                     stopSelf()
                     true
@@ -145,14 +139,7 @@ class FloatingOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                             stopSelf()
                         },
                         onCloseApp = {
-                            LimitPlusApp.instance.repository.closeTargetApp(targetPackage)
-                            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                                addCategory(Intent.CATEGORY_HOME)
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                            }
-                            try {
-                                startActivity(homeIntent)
-                            } catch (_: Exception) {}
+                            CloseAppActivity.start(this@FloatingOverlayService, targetPackage)
                             removeOverlay()
                             stopSelf()
                         }
