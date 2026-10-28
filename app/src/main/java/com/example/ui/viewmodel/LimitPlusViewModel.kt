@@ -32,11 +32,14 @@ import java.util.Calendar
 data class PermissionsStatus(
     val hasUsageAccess: Boolean = false,
     val hasOverlayPermission: Boolean = false,
-    val hasNotificationPermission: Boolean = false,
-    val hasBatteryOptimizationIgnored: Boolean = false
+    val hasBatteryOptimizationIgnored: Boolean = false,
+    val hasNotificationPermission: Boolean = true
 ) {
     val allEssentialGranted: Boolean
         get() = hasUsageAccess && hasOverlayPermission
+
+    val allGranted: Boolean
+        get() = hasUsageAccess && hasOverlayPermission && hasBatteryOptimizationIgnored
 }
 
 data class ActiveSessionUiState(
@@ -217,13 +220,6 @@ class LimitPlusViewModel(
             Settings.canDrawOverlays(context)
         } else true
 
-        val hasNotifications = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(
-                context,
-                android.Manifest.permission.POST_NOTIFICATIONS
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        } else true
-
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
         val hasBattery = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && powerManager != null) {
             powerManager.isIgnoringBatteryOptimizations(context.packageName)
@@ -232,8 +228,8 @@ class LimitPlusViewModel(
         return PermissionsStatus(
             hasUsageAccess = hasUsage,
             hasOverlayPermission = hasOverlay,
-            hasNotificationPermission = hasNotifications,
-            hasBatteryOptimizationIgnored = hasBattery
+            hasBatteryOptimizationIgnored = hasBattery,
+            hasNotificationPermission = true
         )
     }
 

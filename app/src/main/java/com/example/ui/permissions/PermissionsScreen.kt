@@ -27,7 +27,6 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Warning
@@ -63,24 +62,37 @@ import com.example.ui.viewmodel.PermissionsStatus
 @Composable
 fun PermissionsScreen(
     permissions: PermissionsStatus,
-    onRequestNotificationPermission: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onRequestNotificationPermission: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
 
     val grantedCount = listOf(
-        permissions.hasNotificationPermission,
-        permissions.hasBatteryOptimizationIgnored,
         permissions.hasUsageAccess,
-        permissions.hasOverlayPermission
+        permissions.hasOverlayPermission,
+        permissions.hasBatteryOptimizationIgnored
     ).count { it }
-    val allPermissionsGranted = grantedCount == 4
-    val progressFraction = grantedCount / 4f
+    val allPermissionsGranted = grantedCount == 3
+    val progressFraction = grantedCount / 3f
 
     val onGrantAllAction: () -> Unit = {
         when {
-            !permissions.hasNotificationPermission -> {
-                onRequestNotificationPermission()
+            !permissions.hasUsageAccess -> {
+                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+            }
+            !permissions.hasOverlayPermission -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:${context.packageName}")
+                    ).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(intent)
+                }
             }
             !permissions.hasBatteryOptimizationIgnored -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -98,23 +110,6 @@ fun PermissionsScreen(
                         }
                         context.startActivity(fallback)
                     }
-                }
-            }
-            !permissions.hasUsageAccess -> {
-                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                context.startActivity(intent)
-            }
-            !permissions.hasOverlayPermission -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    val intent = Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:${context.packageName}")
-                    ).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    context.startActivity(intent)
                 }
             }
         }
@@ -183,9 +178,9 @@ fun PermissionsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = if (allPermissionsGranted) {
-                                    "All 4 system permissions are active. Background enforcement is ready."
+                                    "All 3 system permissions are active. Background enforcement is ready."
                                 } else {
-                                    "$grantedCount of 4 permissions granted. Tap below to complete setup."
+                                    "$grantedCount of 3 permissions granted. Tap below to complete setup."
                                 },
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     color = if (allPermissionsGranted) EmeraldSuccess else Color(0xFF94A3B8),
@@ -264,11 +259,11 @@ fun PermissionsScreen(
         // 2. Draw Over Other Apps
         item {
             PermissionItemCard(
-                title = "2. Draw Over Apps (SYSTEM_ALERT_WINDOW)",
+                title = "2. Display Over Other Apps (SYSTEM_ALERT_WINDOW)",
                 description = "Required to display the high-priority '+5 Minute' extension dialogue over target apps without interrupting system navigation.",
                 isGranted = permissions.hasOverlayPermission,
                 icon = Icons.Default.Layers,
-                actionLabel = "Grant Draw Over Apps",
+                actionLabel = "Grant Display Over Apps",
                 onAction = {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         val intent = Intent(
@@ -283,22 +278,10 @@ fun PermissionsScreen(
             )
         }
 
-        // 3. Notifications
+        // 3. Ignore Battery Optimization
         item {
             PermissionItemCard(
-                title = "3. Notifications & Heads-Up Alerts",
-                description = "Enables foreground service persistence and instant alert notifications with quick [+5 Minutes] actions.",
-                isGranted = permissions.hasNotificationPermission,
-                icon = Icons.Default.Notifications,
-                actionLabel = "Grant Notifications",
-                onAction = onRequestNotificationPermission
-            )
-        }
-
-        // 4. Ignore Battery Optimization
-        item {
-            PermissionItemCard(
-                title = "4. Background Battery Persistence",
+                title = "3. Background Battery Persistence",
                 description = "Exempts LimitPlus from Android Doze mode and aggressive OEM background app killing so limits trigger without delay.",
                 isGranted = permissions.hasBatteryOptimizationIgnored,
                 icon = Icons.Default.BatteryAlert,

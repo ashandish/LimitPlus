@@ -56,6 +56,15 @@ class FloatingOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+        serviceScope.launch {
+            LimitPlusApp.instance.repository.currentPrompt.collect { prompt ->
+                if (prompt == null) {
+                    removeOverlay()
+                    stopSelf()
+                }
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

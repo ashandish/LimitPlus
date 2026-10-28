@@ -52,7 +52,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.dashboard.DashboardScreen
 import com.example.ui.monitor.SessionMonitorScreen
-import com.example.ui.overlay.OverlayPromptCard
 import com.example.ui.permissions.PermissionsScreen
 import com.example.ui.theme.CoralAlert
 import com.example.ui.theme.CyanLight
@@ -72,28 +71,17 @@ class MainActivity : ComponentActivity() {
             LimitPlusTheme {
                 val viewModel: LimitPlusViewModel = viewModel()
 
-                // Notification permission launcher for Android 13+
-                val notificationPermissionLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.RequestPermission()
-                ) {
-                    viewModel.checkPermissions()
-                }
-
                 val apps by viewModel.appsList.collectAsState()
                 val searchQuery by viewModel.searchQuery.collectAsState()
                 val sessionState by viewModel.activeSessionState.collectAsState()
                 val permissions by viewModel.permissions.collectAsState()
                 val timeUntilMidnight by viewModel.timeUntilMidnight.collectAsState()
                 val recentLogs by viewModel.recentLogs.collectAsState()
-                val promptData by viewModel.currentPrompt.collectAsState()
 
                 var selectedTab by remember { mutableIntStateOf(0) }
 
                 // Initial install/launch permission check
                 LaunchedEffect(Unit) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    }
                     val currentPerms = viewModel.checkPermissions()
                     // If essential permissions are missing on install, guide user to permissions tab
                     if (!currentPerms.allEssentialGranted) {
@@ -228,32 +216,10 @@ class MainActivity : ComponentActivity() {
                                     onResetTodayUsage = viewModel::resetTodayUsage
                                 )
                                 2 -> PermissionsScreen(
-                                    permissions = permissions,
-                                    onRequestNotificationPermission = {
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                        }
-                                    }
+                                    permissions = permissions
                                 )
                             }
                         }
-                    }
-
-                    // Floating High-Priority Modal Overlay Dialog (in-app interactive prompt)
-                    promptData?.let { prompt ->
-                        OverlayPromptCard(
-                            packageName = prompt.packageName,
-                            appName = prompt.appName,
-                            baselineMinutes = prompt.baselineMinutes,
-                            isRelaunch = prompt.isRelaunchAfterExhaustion,
-                            onAddFiveMinutes = {
-                                viewModel.grantExtension(prompt.packageName, prompt.appName)
-                            },
-                            onCloseApp = {
-                                viewModel.closeTargetApp(prompt.packageName)
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
                     }
                 }
             }

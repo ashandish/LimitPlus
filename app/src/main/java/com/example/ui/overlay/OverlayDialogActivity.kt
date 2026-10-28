@@ -2,7 +2,10 @@ package com.example.ui.overlay
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.Gravity
+import android.view.ViewGroup
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
@@ -16,13 +19,38 @@ class OverlayDialogActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        window?.apply {
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            setGravity(Gravity.CENTER)
+            setBackgroundDrawableResource(android.R.color.transparent)
+        }
+
         val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: run {
-            finish()
+            finishAndRemoveTask()
             return
         }
         val appName = intent.getStringExtra(EXTRA_APP_NAME) ?: packageName
         val baselineMinutes = intent.getIntExtra(EXTRA_BASELINE_MINUTES, 20)
         val isRelaunch = intent.getBooleanExtra(EXTRA_IS_RELAUNCH, false)
+
+        // Auto-dismiss if prompt is dismissed/cleared
+        lifecycleScope.launch {
+            LimitPlusApp.instance.repository.currentPrompt.collect { prompt ->
+                if (prompt == null || prompt.packageName != packageName) {
+                    finishAndRemoveTask()
+                }
+            }
+        }
+
+        // Handle hardware back button: gracefully close the target app and remove task
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                lifecycleScope.launch {
+                    LimitPlusApp.instance.repository.closeTargetApp(packageName)
+                    finishAndRemoveTask()
+                }
+            }
+        })
 
         setContent {
             LimitPlusTheme {
@@ -34,13 +62,13 @@ class OverlayDialogActivity : ComponentActivity() {
                     onAddFiveMinutes = {
                         lifecycleScope.launch {
                             LimitPlusApp.instance.repository.grantFiveMinuteExtension(packageName, appName)
-                            finish()
+                            finishAndRemoveTask()
                         }
                     },
                     onCloseApp = {
                         lifecycleScope.launch {
                             LimitPlusApp.instance.repository.closeTargetApp(packageName)
-                            finish()
+                            finishAndRemoveTask()
                         }
                     },
                     modifier = Modifier.fillMaxSize()

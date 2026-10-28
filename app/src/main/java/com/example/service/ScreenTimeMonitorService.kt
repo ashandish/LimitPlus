@@ -82,13 +82,22 @@ class ScreenTimeMonitorService : Service() {
             repository.currentPrompt.collect { prompt ->
                 if (prompt != null) {
                     dispatchPromptToUser(prompt)
+                } else {
+                    dismissAllPrompts()
                 }
             }
         }
     }
 
     private fun dispatchPromptToUser(prompt: PromptData) {
-        // 1. If Overlay permission is available, trigger the floating system overlay window
+        // Cancel any lingering alert notification so there is strictly only one popup at center
+        try {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.cancel(ALERT_NOTIFICATION_ID)
+        } catch (_: Exception) {}
+
+        // Single Centered Modal Popup Notification:
+        // Priority 1: Floating system overlay window centered over the active app
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
             val overlayIntent = Intent(this, FloatingOverlayService::class.java).apply {
                 putExtra(FloatingOverlayService.EXTRA_PACKAGE_NAME, prompt.packageName)
@@ -98,7 +107,7 @@ class ScreenTimeMonitorService : Service() {
             }
             startService(overlayIntent)
         } else {
-            // 2. Translucent activity prompt fallback
+            // Priority 2: Translucent activity prompt centered on screen
             val dialogIntent = Intent(this, OverlayDialogActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 putExtra(OverlayDialogActivity.EXTRA_PACKAGE_NAME, prompt.packageName)
@@ -108,77 +117,18 @@ class ScreenTimeMonitorService : Service() {
             }
             startActivity(dialogIntent)
         }
-
-        // 3. High-Priority Heads-up Notification with Fullscreen & Quick Actions
-        sendPromptNotification(prompt)
     }
 
-    private fun sendPromptNotification(prompt: PromptData) {
-        val addFiveIntent = Intent(this, LimitActionReceiver::class.java).apply {
-            action = LimitActionReceiver.ACTION_ADD_FIVE
-            putExtra(LimitActionReceiver.EXTRA_PACKAGE, prompt.packageName)
-            putExtra(LimitActionReceiver.EXTRA_APP_NAME, prompt.appName)
-        }
-        val addFivePending = PendingIntent.getBroadcast(
-            this,
-            1001,
-            addFiveIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val closeAppIntent = Intent(this, LimitActionReceiver::class.java).apply {
-            action = LimitActionReceiver.ACTION_CLOSE_APP
-            putExtra(LimitActionReceiver.EXTRA_PACKAGE, prompt.packageName)
-        }
-        val closeAppPending = PendingIntent.getBroadcast(
-            this,
-            1002,
-            closeAppIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val dialogIntent = Intent(this, OverlayDialogActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra(OverlayDialogActivity.EXTRA_PACKAGE_NAME, prompt.packageName)
-            putExtra(OverlayDialogActivity.EXTRA_APP_NAME, prompt.appName)
-            putExtra(OverlayDialogActivity.EXTRA_BASELINE_MINUTES, prompt.baselineMinutes)
-            putExtra(OverlayDialogActivity.EXTRA_IS_RELAUNCH, prompt.isRelaunchAfterExhaustion)
-        }
-        val fullScreenPending = PendingIntent.getActivity(
-            this,
-            1003,
-            dialogIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val title = if (prompt.isRelaunchAfterExhaustion) {
-            "${prompt.appName} Limit Expired"
-        } else {
-            "${prompt.appName} Daily Limit Reached"
-        }
-
-        val message = if (prompt.isRelaunchAfterExhaustion) {
-            "${prompt.appName} daily limit has expired. Open for 5 minutes?"
-        } else {
-            "You have reached your ${prompt.baselineMinutes}-minute daily limit for ${prompt.appName}. Add 5 more minutes?"
-        }
-
-        val notification = NotificationCompat.Builder(this, LimitPlusApp.CHANNEL_LIMIT_ALERTS)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(title)
-            .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setFullScreenIntent(fullScreenPending, true)
-            .setAutoCancel(true)
-            .addAction(0, "+5 Minutes", addFivePending)
-            .addAction(0, "Close App", closeAppPending)
-            .build()
-
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(ALERT_NOTIFICATION_ID, notification)
+    private fun dismissAllPrompts() {
+        try {
+            stopService(Intent(this, FloatingOverlayService::class.java))
+        } catch (_: Exception) {}
+        try {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.cancel(ALERT_NOTIFICATION_ID)
+        } catch (_: Exception) {}
     }
+
 
     private fun startMonitoringLoop() {
         monitorJob?.cancel()

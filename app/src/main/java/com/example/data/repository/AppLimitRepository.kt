@@ -1,11 +1,16 @@
 package com.example.data.repository
 
+import android.app.ActivityManager
 import android.app.usage.UsageStats
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.os.Build
 import com.example.data.db.LimitPlusDatabase
 import com.example.data.entity.AppLimitConfig
 import com.example.data.entity.DailyAppUsage
@@ -13,11 +18,13 @@ import com.example.data.entity.ExtensionSessionLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -420,6 +427,7 @@ class AppLimitRepository(
 
     /**
      * Closes the target application and immediately sends the user to the Home launcher.
+     * Prevents the app from minimizing to Picture-in-Picture or a corner window.
      * Temporary extension is terminated immediately.
      */
     suspend fun closeTargetApp(packageName: String) {
@@ -435,12 +443,59 @@ class AppLimitRepository(
             )
         )
 
-        // Launch Home screen
+        // 1. Immediately request transient audio focus to stop media/video playback.
+        // This pauses video in apps like YouTube/Instagram and prevents them from auto-docking into PiP.
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val audioAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+                val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    .setAudioAttributes(audioAttributes)
+                    .build()
+                audioManager?.requestAudioFocus(focusRequest)
+                scope.launch {
+                    delay(1000L)
+                    audioManager?.abandonAudioFocusRequest(focusRequest)
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager?.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                scope.launch {
+                    delay(1000L)
+                    @Suppress("DEPRECATION")
+                    audioManager?.abandonAudioFocus(null)
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 2. Launch Home launcher with clean flags to bring the device Home
         val homeIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         context.startActivity(homeIntent)
+
+        // 3. Kill background processes of the target package so it is completely closed
+        // and cannot remain floating in a corner window or PiP.
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        try {
+            activityManager?.killBackgroundProcesses(packageName)
+        } catch (_: Exception) {}
+
+        // Repeat after home transition completes to ensure any lingering process/PiP is terminated
+        withContext(Dispatchers.IO) {
+            try {
+                delay(150L)
+                activityManager?.killBackgroundProcesses(packageName)
+                delay(350L)
+                activityManager?.killBackgroundProcesses(packageName)
+            } catch (_: Exception) {}
+        }
     }
 
     fun showPrompt(data: PromptData) {
