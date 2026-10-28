@@ -216,6 +216,7 @@ class MainActivity : ComponentActivity() {
                                     onSearchQueryChange = viewModel::setSearchQuery,
                                     onToggleMonitored = viewModel::toggleMonitored,
                                     onUpdateBaseline = viewModel::updateBaseline,
+                                    onAddCustomApp = viewModel::addCustomApp,
                                     hasMissingPermissions = !permissions.allEssentialGranted,
                                     onNavigateToPermissions = { selectedTab = 2 }
                                 )

@@ -23,7 +23,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatteryAlert
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Security
@@ -34,6 +36,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -65,6 +68,58 @@ fun PermissionsScreen(
 ) {
     val context = LocalContext.current
 
+    val grantedCount = listOf(
+        permissions.hasNotificationPermission,
+        permissions.hasBatteryOptimizationIgnored,
+        permissions.hasUsageAccess,
+        permissions.hasOverlayPermission
+    ).count { it }
+    val allPermissionsGranted = grantedCount == 4
+    val progressFraction = grantedCount / 4f
+
+    val onGrantAllAction: () -> Unit = {
+        when {
+            !permissions.hasNotificationPermission -> {
+                onRequestNotificationPermission()
+            }
+            !permissions.hasBatteryOptimizationIgnored -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    val intent = Intent(
+                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        Uri.parse("package:${context.packageName}")
+                    ).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    try {
+                        context.startActivity(intent)
+                    } catch (_: Exception) {
+                        val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        context.startActivity(fallback)
+                    }
+                }
+            }
+            !permissions.hasUsageAccess -> {
+                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+            }
+            !permissions.hasOverlayPermission -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:${context.packageName}")
+                    ).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(intent)
+                }
+            }
+        }
+    }
+
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -73,123 +128,115 @@ fun PermissionsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
     ) {
-        // Status Overview Banner
+        // Dedicated "Grant All Permissions" Card
         item {
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("grant_all_card"),
+                shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF131D31)),
                 border = CardDefaults.outlinedCardBorder().copy(
                     brush = Brush.horizontalGradient(
-                        if (permissions.allEssentialGranted) {
-                            listOf(EmeraldSuccess.copy(0.4f), Color.Transparent)
+                        if (allPermissionsGranted) {
+                            listOf(EmeraldSuccess, EmeraldSuccess.copy(0.4f))
                         } else {
-                            listOf(CyanPrimary.copy(0.4f), CoralAlert.copy(0.3f))
+                            listOf(CyanPrimary, IndigoSecondary)
                         }
                     ),
-                    width = 1.dp
+                    width = 1.5.dp
                 )
             ) {
-                Row(
-                    modifier = Modifier.padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(50.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (permissions.allEssentialGranted) EmeraldSuccess.copy(0.2f)
-                                else CyanPrimary.copy(0.2f)
-                            ),
-                        contentAlignment = Alignment.Center
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = if (permissions.allEssentialGranted) Icons.Default.CheckCircle else Icons.Default.Security,
-                            contentDescription = null,
-                            tint = if (permissions.allEssentialGranted) EmeraldSuccess else CyanLight,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(14.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (permissions.allEssentialGranted) "Permissions Ready" else "Permissions Setup",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
+                        Box(
+                            modifier = Modifier
+                                .size(50.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (allPermissionsGranted) EmeraldSuccess.copy(0.2f)
+                                    else CyanPrimary.copy(0.2f)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (allPermissionsGranted) Icons.Default.DoneAll else Icons.Default.Bolt,
+                                contentDescription = null,
+                                tint = if (allPermissionsGranted) EmeraldSuccess else CyanLight,
+                                modifier = Modifier.size(28.dp)
                             )
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = if (permissions.allEssentialGranted) {
-                                "All essential permissions granted for real-time background protection."
-                            } else {
-                                "Tap each item below to grant required Android system access."
-                            },
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                color = Color(0xFF94A3B8),
-                                fontSize = 11.5.sp
+                        }
+
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (allPermissionsGranted) "Full Protection Enabled" else "Grant All Permissions",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
                             )
-                        )
-                    }
-                }
-
-                if (!permissions.allEssentialGranted || !permissions.hasBatteryOptimizationIgnored || !permissions.hasNotificationPermission) {
-                    val (nextActionTitle, nextAction) = when {
-                        !permissions.hasNotificationPermission -> "Grant Notifications" to onRequestNotificationPermission
-                        !permissions.hasUsageAccess -> "Grant Usage Access" to {
-                            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                            }
-                            context.startActivity(intent)
-                        }
-                        !permissions.hasOverlayPermission -> "Grant Draw Over Apps" to {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                val intent = Intent(
-                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                    Uri.parse("package:${context.packageName}")
-                                ).apply {
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                }
-                                context.startActivity(intent)
-                            }
-                        }
-                        else -> "Allow Background Execution" to {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                val intent = Intent(
-                                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                                    Uri.parse("package:${context.packageName}")
-                                ).apply {
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                }
-                                try {
-                                    context.startActivity(intent)
-                                } catch (_: Exception) {
-                                    val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
-                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                    }
-                                    context.startActivity(fallback)
-                                }
-                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (allPermissionsGranted) {
+                                    "All 4 system permissions are active. Background enforcement is ready."
+                                } else {
+                                    "$grantedCount of 4 permissions granted. Tap below to complete setup."
+                                },
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = if (allPermissionsGranted) EmeraldSuccess else Color(0xFF94A3B8),
+                                    fontSize = 11.5.sp
+                                )
+                            )
                         }
                     }
 
-                    Button(
-                        onClick = nextAction,
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Progress Bar
+                    LinearProgressIndicator(
+                        progress = { progressFraction },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = if (allPermissionsGranted) EmeraldSuccess else CyanPrimary,
+                        trackColor = Color(0xFF1E2942)
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // "Grant All Permissions" Primary Action Button
+                    Button(
+                        onClick = onGrantAllAction,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .testTag("grant_all_permissions_button"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (allPermissionsGranted) EmeraldSuccess.copy(0.25f) else CyanPrimary,
+                            contentColor = if (allPermissionsGranted) EmeraldSuccess else Color.White
+                        )
                     ) {
+                        Icon(
+                            imageVector = if (allPermissionsGranted) Icons.Default.CheckCircle else Icons.Default.Bolt,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Next: $nextActionTitle",
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
+                            text = if (allPermissionsGranted) {
+                                "All Permissions Granted ✓"
+                            } else {
+                                "Grant All Permissions (1-Tap Setup)"
+                            },
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.Bold
                             )
                         )
                     }
@@ -204,7 +251,7 @@ fun PermissionsScreen(
                 description = "Required by Android to detect which app is active in foreground and track elapsed screen time against daily baselines.",
                 isGranted = permissions.hasUsageAccess,
                 icon = Icons.Default.Shield,
-                actionLabel = "Open Usage Access Settings",
+                actionLabel = "Grant Usage Access",
                 onAction = {
                     val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -221,7 +268,7 @@ fun PermissionsScreen(
                 description = "Required to display the high-priority '+5 Minute' extension dialogue over target apps without interrupting system navigation.",
                 isGranted = permissions.hasOverlayPermission,
                 icon = Icons.Default.Layers,
-                actionLabel = "Grant Overlay Permission",
+                actionLabel = "Grant Draw Over Apps",
                 onAction = {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         val intent = Intent(
@@ -243,7 +290,7 @@ fun PermissionsScreen(
                 description = "Enables foreground service persistence and instant alert notifications with quick [+5 Minutes] actions.",
                 isGranted = permissions.hasNotificationPermission,
                 icon = Icons.Default.Notifications,
-                actionLabel = "Request Notification Permission",
+                actionLabel = "Grant Notifications",
                 onAction = onRequestNotificationPermission
             )
         }
@@ -255,7 +302,7 @@ fun PermissionsScreen(
                 description = "Exempts LimitPlus from Android Doze mode and aggressive OEM background app killing so limits trigger without delay.",
                 isGranted = permissions.hasBatteryOptimizationIgnored,
                 icon = Icons.Default.BatteryAlert,
-                actionLabel = "Optimize Battery Settings",
+                actionLabel = "Grant Background Access",
                 onAction = {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         val intent = Intent(

@@ -1,6 +1,7 @@
 package com.example.service
 
 import android.app.Notification
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.app.usage.UsageEvents
@@ -29,13 +30,18 @@ class ScreenTimeMonitorService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var monitorJob: Job? = null
-    private var lastForegroundApp: String? = null
+
+    // Track active foreground state reliably across event gaps
+    private var activeForegroundPackage: String? = null
     private var lastCheckTime: Long = System.currentTimeMillis()
+    private var lastEventQueryTime: Long = System.currentTimeMillis() - 30_000L
+    private val launcherPackages = mutableSetOf<String>()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        cacheLauncherPackages()
         startForeground(NOTIFICATION_ID, buildForegroundNotification("Active: Monitoring daily baselines"))
         observePrompts()
     }
@@ -45,6 +51,29 @@ class ScreenTimeMonitorService : Service() {
             startMonitoringLoop()
         }
         return START_STICKY
+    }
+
+    private fun cacheLauncherPackages() {
+        try {
+            val intent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+            }
+            val resolveInfos = packageManager.queryIntentActivities(intent, 0)
+            for (info in resolveInfos) {
+                launcherPackages.add(info.activityInfo.packageName)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun isLauncherOrSystem(pkg: String): Boolean {
+        if (pkg == "android" || pkg == "com.android.systemui" || pkg == "com.google.android.apps.nexuslauncher") {
+            return true
+        }
+        if (launcherPackages.contains(pkg)) {
+            return true
+        }
+        cacheLauncherPackages()
+        return launcherPackages.contains(pkg)
     }
 
     private fun observePrompts() {
@@ -80,7 +109,7 @@ class ScreenTimeMonitorService : Service() {
             startActivity(dialogIntent)
         }
 
-        // 3. High-Priority Heads-up Notification with Quick Actions
+        // 3. High-Priority Heads-up Notification with Fullscreen & Quick Actions
         sendPromptNotification(prompt)
     }
 
@@ -108,6 +137,20 @@ class ScreenTimeMonitorService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val dialogIntent = Intent(this, OverlayDialogActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(OverlayDialogActivity.EXTRA_PACKAGE_NAME, prompt.packageName)
+            putExtra(OverlayDialogActivity.EXTRA_APP_NAME, prompt.appName)
+            putExtra(OverlayDialogActivity.EXTRA_BASELINE_MINUTES, prompt.baselineMinutes)
+            putExtra(OverlayDialogActivity.EXTRA_IS_RELAUNCH, prompt.isRelaunchAfterExhaustion)
+        }
+        val fullScreenPending = PendingIntent.getActivity(
+            this,
+            1003,
+            dialogIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val title = if (prompt.isRelaunchAfterExhaustion) {
             "${prompt.appName} Limit Expired"
         } else {
@@ -127,12 +170,13 @@ class ScreenTimeMonitorService : Service() {
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setFullScreenIntent(fullScreenPending, true)
             .setAutoCancel(true)
             .addAction(0, "+5 Minutes", addFivePending)
             .addAction(0, "Close App", closeAppPending)
             .build()
 
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(ALERT_NOTIFICATION_ID, notification)
     }
 
@@ -141,47 +185,109 @@ class ScreenTimeMonitorService : Service() {
         monitorJob = serviceScope.launch {
             val repository = LimitPlusApp.instance.repository
             val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+            var syncCounter = 0
 
             while (isActive) {
                 try {
-                    val currentForeground = getForegroundAppPackage(usageStatsManager)
+                    val currentForeground = detectForegroundApp(usageStatsManager)
                     val now = System.currentTimeMillis()
                     val elapsedSeconds = ((now - lastCheckTime) / 1000L).coerceIn(1L, 10L)
                     lastCheckTime = now
 
-                    if (currentForeground != lastForegroundApp) {
-                        lastForegroundApp = currentForeground
+                    if (currentForeground != activeForegroundPackage) {
+                        activeForegroundPackage = currentForeground
                         repository.onForegroundAppChanged(currentForeground)
+                        updateForegroundNotification(currentForeground)
                     } else if (currentForeground != null && currentForeground != packageName) {
                         repository.recordUsageTick(currentForeground, elapsedSeconds)
                     }
+
+                    // Periodically sync authoritative system usage stats from Android OS
+                    syncCounter++
+                    if (syncCounter >= 3) {
+                        syncCounter = 0
+                        repository.syncWithSystemUsageStats(usageStatsManager)
+                    }
                 } catch (_: Exception) { }
 
-                delay(1500L) // Poll interval
+                delay(1000L) // 1-second check interval for responsive tracking
             }
         }
     }
 
-    private fun getForegroundAppPackage(usageStatsManager: UsageStatsManager?): String? {
+    /**
+     * Dual-Engine Foreground App Detection:
+     * 1. Inspects recent UsageEvents for ACTIVITY_RESUMED
+     * 2. Inspects UsageStats for recent lastTimeUsed
+     * 3. Maintains active package while inside an app (instead of dropping to null)
+     * 4. Excludes Home launcher, System UI, and LimitPlus itself
+     */
+    private fun detectForegroundApp(usageStatsManager: UsageStatsManager?): String? {
         if (usageStatsManager == null) return null
-        val endTime = System.currentTimeMillis()
-        val beginTime = endTime - 10000L
+        val now = System.currentTimeMillis()
 
+        // 1. Check UsageEvents stream
         try {
-            val usageEvents = usageStatsManager.queryEvents(beginTime, endTime)
+            val queryStart = (now - 15_000L).coerceAtMost(lastEventQueryTime)
+            val events = usageStatsManager.queryEvents(queryStart, now)
             val event = UsageEvents.Event()
-            var currentPackage: String? = null
+            var latestResumedPkg: String? = null
 
-            while (usageEvents.hasNextEvent()) {
-                usageEvents.getNextEvent(event)
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
                 if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
-                    currentPackage = event.packageName
+                    latestResumedPkg = event.packageName
                 }
             }
-            return currentPackage
-        } catch (_: Exception) {
+            lastEventQueryTime = now
+
+            if (latestResumedPkg != null) {
+                activeForegroundPackage = latestResumedPkg
+            }
+        } catch (_: Exception) {}
+
+        // 2. Validate with UsageStats INTERVAL_BEST
+        try {
+            val statsList = usageStatsManager.queryUsageStats(
+                UsageStatsManager.INTERVAL_BEST,
+                now - 10_000L,
+                now
+            )
+            if (!statsList.isNullOrEmpty()) {
+                val mostRecent = statsList
+                    .filter { it.packageName != packageName }
+                    .maxByOrNull { it.lastTimeUsed }
+
+                if (mostRecent != null && (now - mostRecent.lastTimeUsed) < 4_000L) {
+                    activeForegroundPackage = mostRecent.packageName
+                }
+            }
+        } catch (_: Exception) {}
+
+        val current = activeForegroundPackage
+        if (current == null || current == packageName || isLauncherOrSystem(current)) {
             return null
         }
+        return current
+    }
+
+    private fun updateForegroundNotification(activePkg: String?) {
+        try {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val text = if (activePkg != null) {
+                val appName = try {
+                    val pm = packageManager
+                    val info = pm.getApplicationInfo(activePkg, 0)
+                    pm.getApplicationLabel(info).toString()
+                } catch (_: Exception) {
+                    activePkg
+                }
+                "Active: Monitoring $appName"
+            } else {
+                "Active: Protecting daily baselines"
+            }
+            notificationManager.notify(NOTIFICATION_ID, buildForegroundNotification(text))
+        } catch (_: Exception) {}
     }
 
     private fun buildForegroundNotification(statusText: String): Notification {

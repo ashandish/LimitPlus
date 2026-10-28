@@ -1,6 +1,6 @@
 package com.example.data.repository
 
-import android.app.usage.UsageEvents
+import android.app.usage.UsageStats
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
@@ -17,7 +17,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -81,7 +80,7 @@ class AppLimitRepository(
     }
 
     /**
-     * Seeds popular preset apps (YouTube, Instagram, TikTok, Chrome, Reddit, X)
+     * Seeds popular preset apps (YouTube, Facebook, Instagram, TikTok, WhatsApp, Chrome, etc.)
      * and queries device installed launcher apps.
      */
     suspend fun seedDefaultAndInstalledApps() {
@@ -89,11 +88,25 @@ class AppLimitRepository(
         val existingMap = existing.associateBy { it.packageName }
         val toInsert = mutableListOf<AppLimitConfig>()
 
-        // Popular presets for instant testing / demonstration
+        // Popular presets ensuring Facebook, YouTube, Instagram are monitored by default
         val presets = listOf(
             AppLimitConfig(
                 packageName = "com.google.android.youtube",
                 appName = "YouTube",
+                isMonitored = true,
+                baselineMinutes = 20,
+                isCustomOrPreset = true
+            ),
+            AppLimitConfig(
+                packageName = "com.facebook.katana",
+                appName = "Facebook",
+                isMonitored = true,
+                baselineMinutes = 20,
+                isCustomOrPreset = true
+            ),
+            AppLimitConfig(
+                packageName = "com.facebook.lite",
+                appName = "Facebook Lite",
                 isMonitored = true,
                 baselineMinutes = 20,
                 isCustomOrPreset = true
@@ -106,10 +119,24 @@ class AppLimitRepository(
                 isCustomOrPreset = true
             ),
             AppLimitConfig(
+                packageName = "com.instagram.lite",
+                appName = "Instagram Lite",
+                isMonitored = true,
+                baselineMinutes = 15,
+                isCustomOrPreset = true
+            ),
+            AppLimitConfig(
                 packageName = "com.zhiliaoapp.musically",
                 appName = "TikTok",
                 isMonitored = true,
                 baselineMinutes = 15,
+                isCustomOrPreset = true
+            ),
+            AppLimitConfig(
+                packageName = "com.whatsapp",
+                appName = "WhatsApp",
+                isMonitored = false,
+                baselineMinutes = 30,
                 isCustomOrPreset = true
             ),
             AppLimitConfig(
@@ -181,8 +208,8 @@ class AppLimitRepository(
     suspend fun addCustomApp(packageName: String, appName: String, baselineMinutes: Int) {
         configDao.insertOrUpdate(
             AppLimitConfig(
-                packageName = packageName,
-                appName = appName,
+                packageName = packageName.trim(),
+                appName = appName.trim(),
                 isMonitored = true,
                 baselineMinutes = baselineMinutes.coerceAtLeast(1),
                 isCustomOrPreset = true
@@ -204,6 +231,74 @@ class AppLimitRepository(
         )
         usageDao.insertOrUpdate(newUsage)
         return newUsage
+    }
+
+    /**
+     * Synchronizes authoritative daily screen time metrics from Android's UsageStatsManager.
+     * This ensures that any time spent in YouTube, Facebook, Instagram, etc. is immediately
+     * reflected in LimitPlus, even before or between polling ticks.
+     */
+    suspend fun syncWithSystemUsageStats(usageStatsManager: UsageStatsManager?) {
+        if (usageStatsManager == null) return
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val startOfDay = cal.timeInMillis
+        val now = System.currentTimeMillis()
+
+        try {
+            val statsList = usageStatsManager.queryUsageStats(
+                UsageStatsManager.INTERVAL_DAILY,
+                startOfDay,
+                now
+            ) ?: return
+
+            if (statsList.isEmpty()) return
+
+            val statsMap = statsList.associateBy { it.packageName }
+            val configs = configDao.getAllList().filter { it.isMonitored }
+            val today = getTodayDateString()
+
+            for (config in configs) {
+                val stats = statsMap[config.packageName] ?: continue
+                val systemTotalSeconds = stats.totalTimeInForeground / 1000L
+                if (systemTotalSeconds <= 0L) continue
+
+                val existing = getUsageForPackage(config.packageName, today)
+                val baselineMaxSeconds = config.baselineMinutes * 60L
+                val calculatedBaseline = systemTotalSeconds.coerceAtMost(baselineMaxSeconds)
+                val calculatedOvertime = (systemTotalSeconds - baselineMaxSeconds).coerceAtLeast(0L)
+
+                if (calculatedBaseline > existing.baselineUsedSeconds || calculatedOvertime > existing.overtimeUsedSeconds) {
+                    val updated = existing.copy(
+                        baselineUsedSeconds = maxOf(existing.baselineUsedSeconds, calculatedBaseline),
+                        overtimeUsedSeconds = maxOf(existing.overtimeUsedSeconds, calculatedOvertime),
+                        lastActiveTimestamp = stats.lastTimeUsed
+                    )
+                    usageDao.insertOrUpdate(updated)
+
+                    // If active in foreground and baseline is exhausted, check if prompt is needed
+                    if (updated.isBaselineExhausted(config.baselineMinutes) && _activeForegroundPackage.value == config.packageName) {
+                        val activeExt = _activeExtensionPackage.value
+                        val expiresAt = _activeExtensionExpiresAt.value
+                        val isUnderExtension = (activeExt == config.packageName && expiresAt != null && now < expiresAt)
+                        if (!isUnderExtension && _currentPrompt.value == null) {
+                            showPrompt(
+                                PromptData(
+                                    packageName = config.packageName,
+                                    appName = config.appName,
+                                    baselineMinutes = config.baselineMinutes,
+                                    isRelaunchAfterExhaustion = false
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     /**

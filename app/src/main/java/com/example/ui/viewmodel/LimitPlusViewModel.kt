@@ -199,6 +199,12 @@ class LimitPlusViewModel(
         repository.dismissPrompt()
     }
 
+    fun addCustomApp(packageName: String, appName: String, baselineMinutes: Int) {
+        viewModelScope.launch {
+            repository.addCustomApp(packageName, appName, baselineMinutes)
+        }
+    }
+
     fun resetTodayUsage() {
         viewModelScope.launch {
             repository.resetTodayUsage()
