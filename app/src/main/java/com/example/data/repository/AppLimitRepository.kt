@@ -80,120 +80,70 @@ class AppLimitRepository(
     }
 
     /**
-     * Seeds popular preset apps (YouTube, Facebook, Instagram, TikTok, WhatsApp, Chrome, etc.)
-     * and queries device installed launcher apps.
+     * Discovers all launchable applications physically installed on the phone.
+     * Automatically purges uninstalled packages so phantom presets never appear.
      */
     suspend fun seedDefaultAndInstalledApps() {
+        val pm = context.packageManager
+
+        // 1. Purge any database records for apps that are not installed on the user's phone
         val existing = configDao.getAllList()
-        val existingMap = existing.associateBy { it.packageName }
-        val toInsert = mutableListOf<AppLimitConfig>()
-
-        // Popular presets ensuring Facebook, YouTube, Instagram are monitored by default
-        val presets = listOf(
-            AppLimitConfig(
-                packageName = "com.google.android.youtube",
-                appName = "YouTube",
-                isMonitored = true,
-                baselineMinutes = 20,
-                isCustomOrPreset = true
-            ),
-            AppLimitConfig(
-                packageName = "com.facebook.katana",
-                appName = "Facebook",
-                isMonitored = true,
-                baselineMinutes = 20,
-                isCustomOrPreset = true
-            ),
-            AppLimitConfig(
-                packageName = "com.facebook.lite",
-                appName = "Facebook Lite",
-                isMonitored = true,
-                baselineMinutes = 20,
-                isCustomOrPreset = true
-            ),
-            AppLimitConfig(
-                packageName = "com.instagram.android",
-                appName = "Instagram",
-                isMonitored = true,
-                baselineMinutes = 15,
-                isCustomOrPreset = true
-            ),
-            AppLimitConfig(
-                packageName = "com.instagram.lite",
-                appName = "Instagram Lite",
-                isMonitored = true,
-                baselineMinutes = 15,
-                isCustomOrPreset = true
-            ),
-            AppLimitConfig(
-                packageName = "com.zhiliaoapp.musically",
-                appName = "TikTok",
-                isMonitored = true,
-                baselineMinutes = 15,
-                isCustomOrPreset = true
-            ),
-            AppLimitConfig(
-                packageName = "com.whatsapp",
-                appName = "WhatsApp",
-                isMonitored = false,
-                baselineMinutes = 30,
-                isCustomOrPreset = true
-            ),
-            AppLimitConfig(
-                packageName = "com.android.chrome",
-                appName = "Google Chrome",
-                isMonitored = false,
-                baselineMinutes = 30,
-                isCustomOrPreset = true
-            ),
-            AppLimitConfig(
-                packageName = "com.reddit.frontpage",
-                appName = "Reddit",
-                isMonitored = false,
-                baselineMinutes = 25,
-                isCustomOrPreset = true
-            ),
-            AppLimitConfig(
-                packageName = "com.twitter.android",
-                appName = "X (Twitter)",
-                isMonitored = false,
-                baselineMinutes = 20,
-                isCustomOrPreset = true
-            )
-        )
-
-        for (preset in presets) {
-            if (!existingMap.containsKey(preset.packageName)) {
-                toInsert.add(preset)
+        for (item in existing) {
+            if (!isAppActuallyInstalled(pm, item.packageName)) {
+                configDao.delete(item.packageName)
             }
         }
 
-        // Query device installed launchable packages
+        // 2. Discover all installed launcher applications
+        val updatedExisting = configDao.getAllList().associateBy { it.packageName }
+        val toInsert = mutableListOf<AppLimitConfig>()
+
         try {
-            val pm = context.packageManager
             val intent = Intent(Intent.ACTION_MAIN, null).apply {
                 addCategory(Intent.CATEGORY_LAUNCHER)
             }
             val resolveInfos = pm.queryIntentActivities(intent, 0)
             for (info in resolveInfos) {
                 val pkg = info.activityInfo.packageName
-                if (pkg != context.packageName && !existingMap.containsKey(pkg) && toInsert.none { it.packageName == pkg }) {
-                    val label = info.loadLabel(pm).toString()
-                    toInsert.add(
-                        AppLimitConfig(
-                            packageName = pkg,
-                            appName = label,
-                            isMonitored = false,
-                            baselineMinutes = 20,
-                            isCustomOrPreset = false
-                        )
-                    )
+                if (pkg == context.packageName) continue // Skip LimitPlus itself
+                if (updatedExisting.containsKey(pkg) || toInsert.any { it.packageName == pkg }) continue
+
+                val label = info.loadLabel(pm).toString()
+                val shouldMonitorByDefault = when (pkg) {
+                    "com.google.android.youtube",
+                    "com.facebook.katana",
+                    "com.instagram.android" -> true
+                    else -> false
                 }
+                val defaultMinutes = when (pkg) {
+                    "com.google.android.youtube", "com.facebook.katana" -> 20
+                    "com.instagram.android" -> 15
+                    else -> 20
+                }
+
+                toInsert.add(
+                    AppLimitConfig(
+                        packageName = pkg,
+                        appName = label,
+                        isMonitored = shouldMonitorByDefault,
+                        baselineMinutes = defaultMinutes,
+                        isCustomOrPreset = false
+                    )
+                )
             }
         } catch (_: Exception) { }
 
         if (toInsert.isNotEmpty()) {
             configDao.insertAll(toInsert)
+        }
+    }
+
+    private fun isAppActuallyInstalled(pm: PackageManager, packageName: String): Boolean {
+        return try {
+            pm.getApplicationInfo(packageName, 0)
+            true
+        } catch (_: PackageManager.NameNotFoundException) {
+            false
         }
     }
 

@@ -80,13 +80,11 @@ fun DashboardScreen(
     onSearchQueryChange: (String) -> Unit,
     onToggleMonitored: (String, Boolean) -> Unit,
     onUpdateBaseline: (String, Int) -> Unit,
-    onAddCustomApp: (String, String, Int) -> Unit = { _, _, _ -> },
     hasMissingPermissions: Boolean = false,
     onNavigateToPermissions: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedAppForBaseline by remember { mutableStateOf<InstalledAppItem?>(null) }
-    var showAddAppDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -147,66 +145,43 @@ fun DashboardScreen(
             Spacer(modifier = Modifier.height(12.dp))
         }
 
-        // Search Bar & Add App Button Row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchQueryChange,
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag("app_search_field"),
-                placeholder = { Text("Search apps...", color = Color(0xFF64748B)) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search",
-                        tint = CyanPrimary
-                    )
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { onSearchQueryChange("") }) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Clear search",
-                                tint = Color(0xFF94A3B8)
-                            )
-                        }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = CyanPrimary,
-                    unfocusedBorderColor = Color(0xFF28385A),
-                    focusedContainerColor = Color(0xFF131D31),
-                    unfocusedContainerColor = Color(0xFF131D31),
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White
-                )
-            )
-
-            Button(
-                onClick = { showAddAppDialog = true },
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary),
-                modifier = Modifier
-                    .height(54.dp)
-                    .testTag("add_app_button")
-            ) {
+        // Search Bar (full-width)
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchQueryChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("app_search_field"),
+            placeholder = { Text("Search installed apps...", color = Color(0xFF64748B)) },
+            leadingIcon = {
                 Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search",
+                    tint = CyanPrimary
                 )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Add", fontWeight = FontWeight.Bold)
-            }
-        }
+            },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { onSearchQueryChange("") }) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Clear search",
+                            tint = Color(0xFF94A3B8)
+                        )
+                    }
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = CyanPrimary,
+                unfocusedBorderColor = Color(0xFF28385A),
+                focusedContainerColor = Color(0xFF131D31),
+                unfocusedContainerColor = Color(0xFF131D31),
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White
+            )
+        )
 
         Spacer(modifier = Modifier.height(14.dp))
 
@@ -290,16 +265,6 @@ fun DashboardScreen(
             onConfirm = { newBaseline ->
                 onUpdateBaseline(app.packageName, newBaseline)
                 selectedAppForBaseline = null
-            }
-        )
-    }
-
-    if (showAddAppDialog) {
-        AddCustomAppDialog(
-            onDismiss = { showAddAppDialog = false },
-            onConfirm = { pkg, name, baseline ->
-                onAddCustomApp(pkg, name, baseline)
-                showAddAppDialog = false
             }
         )
     }
@@ -647,157 +612,6 @@ fun BaselineLimitDialog(
                 colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
             ) {
                 Text("Save Baseline", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Color(0xFF94A3B8))
-            }
-        },
-        containerColor = Color(0xFF131D31),
-        shape = RoundedCornerShape(24.dp)
-    )
-}
-
-@Composable
-fun AddCustomAppDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (packageName: String, appName: String, baselineMinutes: Int) -> Unit
-) {
-    data class PresetApp(val name: String, val pkg: String, val defaultMinutes: Int)
-    val popularPresets = listOf(
-        PresetApp("Facebook", "com.facebook.katana", 20),
-        PresetApp("YouTube", "com.google.android.youtube", 20),
-        PresetApp("Instagram", "com.instagram.android", 15),
-        PresetApp("WhatsApp", "com.whatsapp", 30),
-        PresetApp("TikTok", "com.zhiliaoapp.musically", 15),
-        PresetApp("Chrome", "com.android.chrome", 30)
-    )
-
-    var appName by remember { mutableStateOf("") }
-    var packageName by remember { mutableStateOf("") }
-    var baselineMinutes by remember { mutableIntStateOf(20) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = "Add Monitored App",
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = "Quick Presets:",
-                    style = MaterialTheme.typography.labelMedium.copy(color = CyanLight, fontWeight = FontWeight.Bold)
-                )
-
-                // Quick Preset Pills
-                val rows = popularPresets.chunked(3)
-                rows.forEach { rowItems ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        rowItems.forEach { preset ->
-                            val isSelected = packageName == preset.pkg
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = {
-                                    appName = preset.name
-                                    packageName = preset.pkg
-                                    baselineMinutes = preset.defaultMinutes
-                                },
-                                label = { Text(preset.name, fontSize = 11.5.sp) },
-                                modifier = Modifier.weight(1f),
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = CyanPrimary,
-                                    selectedLabelColor = Color.White,
-                                    containerColor = Color(0xFF1E2942),
-                                    labelColor = Color(0xFFCBD5E1)
-                                )
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                OutlinedTextField(
-                    value = appName,
-                    onValueChange = { appName = it },
-                    label = { Text("App Name (e.g. Facebook)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = CyanPrimary,
-                        unfocusedBorderColor = Color(0xFF28385A),
-                        focusedContainerColor = Color(0xFF1E2942),
-                        unfocusedContainerColor = Color(0xFF1E2942),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    )
-                )
-
-                OutlinedTextField(
-                    value = packageName,
-                    onValueChange = { packageName = it },
-                    label = { Text("Package Name (e.g. com.facebook.katana)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = CyanPrimary,
-                        unfocusedBorderColor = Color(0xFF28385A),
-                        focusedContainerColor = Color(0xFF1E2942),
-                        unfocusedContainerColor = Color(0xFF1E2942),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    )
-                )
-
-                Text(
-                    text = "Daily Baseline: $baselineMinutes minutes",
-                    style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFFCBD5E1), fontWeight = FontWeight.SemiBold)
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    listOf(10, 15, 20, 30, 45).forEach { mins ->
-                        FilterChip(
-                            selected = baselineMinutes == mins,
-                            onClick = { baselineMinutes = mins },
-                            label = { Text("${mins}m") },
-                            modifier = Modifier.weight(1f),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = CyanPrimary,
-                                selectedLabelColor = Color.White,
-                                containerColor = Color(0xFF1E2942),
-                                labelColor = Color(0xFFCBD5E1)
-                            )
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (appName.isNotBlank() && packageName.isNotBlank()) {
-                        onConfirm(packageName.trim(), appName.trim(), baselineMinutes)
-                    }
-                },
-                enabled = appName.isNotBlank() && packageName.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
-            ) {
-                Text("Add & Monitor", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
