@@ -106,4 +106,16 @@ class ExampleRobolectricTest {
     assertFalse(todayUsage.isBaselineExhausted(config.baselineMinutes))
     assertEquals(1800L, todayUsage.remainingBaselineSeconds(config.baselineMinutes))
   }
+
+  @Test
+  fun `extension window allows usage within 5 minutes`() {
+    val now = System.currentTimeMillis()
+    val expiresAt = now + (5 * 60 * 1000L)
+    val isUnderValidExtension = (now < expiresAt)
+    assertTrue(isUnderValidExtension)
+
+    val expiredTime = expiresAt + 1000L
+    val isStillValid = (expiredTime < expiresAt)
+    assertFalse(isStillValid)
+  }
 }

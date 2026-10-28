@@ -60,15 +60,15 @@ class OverlayDialogActivity : ComponentActivity() {
                     baselineMinutes = baselineMinutes,
                     isRelaunch = isRelaunch,
                     onAddFiveMinutes = {
+                        finishAndRemoveTask()
                         lifecycleScope.launch {
                             LimitPlusApp.instance.repository.grantFiveMinuteExtension(packageName, appName)
-                            finishAndRemoveTask()
                         }
                     },
                     onCloseApp = {
+                        finishAndRemoveTask()
                         lifecycleScope.launch {
                             LimitPlusApp.instance.repository.closeTargetApp(packageName)
-                            finishAndRemoveTask()
                         }
                     },
                     modifier = Modifier.fillMaxSize()

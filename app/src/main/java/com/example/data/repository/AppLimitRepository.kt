@@ -85,6 +85,20 @@ class AppLimitRepository(
         usageDao.getAllForDateFlow(date)
     }
 
+    @Volatile
+    private var suppressedPackage: String? = null
+    @Volatile
+    private var suppressedUntil: Long = 0L
+
+    fun suppressPackage(packageName: String, durationMs: Long = 6000L) {
+        suppressedPackage = packageName
+        suppressedUntil = System.currentTimeMillis() + durationMs
+    }
+
+    fun isPackageSuppressed(packageName: String): Boolean {
+        return suppressedPackage == packageName && System.currentTimeMillis() < suppressedUntil
+    }
+
     fun getTodayDateString(): String {
         return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
     }
@@ -229,6 +243,7 @@ class AppLimitRepository(
             val today = getTodayDateString()
 
             for (config in configs) {
+                if (isPackageSuppressed(config.packageName)) continue
                 val stats = statsMap[config.packageName] ?: continue
                 val systemTotalSeconds = stats.totalTimeInForeground / 1000L
                 if (systemTotalSeconds <= 0L) continue
@@ -278,22 +293,7 @@ class AppLimitRepository(
         val activeExtPkg = _activeExtensionPackage.value
         val extExpiresAt = _activeExtensionExpiresAt.value
 
-        // RULE: Session Termination & Strict Baseline Preservation:
-        // As soon as the user exits or closes the target application, the temporary extension immediately ends.
-        // The configured daily baseline remains strictly intact.
-        if (activeExtPkg != null && activeExtPkg != newPackage) {
-            logDao.insert(
-                ExtensionSessionLog(
-                    packageName = activeExtPkg,
-                    appName = configDao.getByPackage(activeExtPkg)?.appName ?: activeExtPkg,
-                    status = "TERMINATED_ON_EXIT"
-                )
-            )
-            _activeExtensionPackage.value = null
-            _activeExtensionExpiresAt.value = null
-        }
-
-        if (newPackage == null || newPackage == context.packageName) {
+        if (newPackage == null || newPackage == context.packageName || isPackageSuppressed(newPackage)) {
             return
         }
 
@@ -332,6 +332,8 @@ class AppLimitRepository(
      * while the user is actively using an app.
      */
     suspend fun recordUsageTick(packageName: String, elapsedSeconds: Long) {
+        if (isPackageSuppressed(packageName)) return
+
         val config = configDao.getByPackage(packageName) ?: return
         if (!config.isMonitored) return
 
@@ -381,11 +383,14 @@ class AppLimitRepository(
             )
             usageDao.insertOrUpdate(updatedUsage)
 
-            // Check if extension expired while inside app
+            // Check if extension is active or expired
             val activeExt = _activeExtensionPackage.value
             val expiresAt = _activeExtensionExpiresAt.value
-            if (activeExt == packageName && expiresAt != null && now >= expiresAt) {
+            if (activeExt == packageName && expiresAt != null && now < expiresAt) {
+                // Extension is currently active! Do NOT show prompt.
+            } else if (activeExt == packageName && expiresAt != null && now >= expiresAt) {
                 // 5m expired! Prompt reappears offering another 5-minute extension
+                _activeExtensionPackage.value = null
                 _activeExtensionExpiresAt.value = null
                 showPrompt(
                     PromptData(
@@ -443,6 +448,8 @@ class AppLimitRepository(
         _currentPrompt.value = null
         _activeExtensionPackage.value = null
         _activeExtensionExpiresAt.value = null
+        _activeForegroundPackage.value = null
+        suppressPackage(packageName, 6000L)
 
         logDao.insert(
             ExtensionSessionLog(
@@ -453,7 +460,6 @@ class AppLimitRepository(
         )
 
         // 1. Immediately request transient audio focus to stop media/video playback.
-        // This pauses video in apps like YouTube/Instagram and prevents them from auto-docking into PiP.
         try {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -480,7 +486,7 @@ class AppLimitRepository(
             }
         } catch (_: Exception) {}
 
-        // 2. Launch Home launcher with clean flags to bring the device Home
+        // 2. Launch Home launcher with clean flags to bring the device Home immediately
         val homeIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -489,15 +495,13 @@ class AppLimitRepository(
         }
         context.startActivity(homeIntent)
 
-        // 3. Kill background processes of the target package so it is completely closed
-        // and cannot remain floating in a corner window or PiP.
+        // 3. Kill background processes immediately and asynchronously
         val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         try {
             activityManager?.killBackgroundProcesses(packageName)
         } catch (_: Exception) {}
 
-        // Repeat after home transition completes to ensure any lingering process/PiP is terminated
-        withContext(Dispatchers.IO) {
+        scope.launch(Dispatchers.IO) {
             try {
                 delay(150L)
                 activityManager?.killBackgroundProcesses(packageName)
@@ -508,6 +512,9 @@ class AppLimitRepository(
     }
 
     fun showPrompt(data: PromptData) {
+        if (isPackageSuppressed(data.packageName)) {
+            return
+        }
         val current = _currentPrompt.value
         // If the prompt is already displayed for this target package, do not re-emit.
         // This keeps the modal popup completely still and eliminates jitter/movement.

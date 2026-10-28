@@ -7,6 +7,7 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
@@ -100,8 +101,7 @@ class FloatingOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                 @Suppress("DEPRECATION")
                 WindowManager.LayoutParams.TYPE_PHONE
             },
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.CENTER
@@ -112,6 +112,21 @@ class FloatingOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             setViewTreeViewModelStoreOwner(this@FloatingOverlayService)
             setViewTreeSavedStateRegistryOwner(this@FloatingOverlayService)
 
+            isFocusable = true
+            isFocusableInTouchMode = true
+            setOnKeyListener { _, keyCode, event ->
+                if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                    removeOverlay()
+                    serviceScope.launch {
+                        LimitPlusApp.instance.repository.closeTargetApp(targetPackage)
+                        stopSelf()
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
+
             setContent {
                 LimitPlusTheme {
                     OverlayPromptCard(
@@ -120,16 +135,16 @@ class FloatingOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                         baselineMinutes = baselineMinutes,
                         isRelaunch = isRelaunch,
                         onAddFiveMinutes = {
+                            removeOverlay()
                             serviceScope.launch {
                                 LimitPlusApp.instance.repository.grantFiveMinuteExtension(targetPackage, appName)
-                                removeOverlay()
                                 stopSelf()
                             }
                         },
                         onCloseApp = {
+                            removeOverlay()
                             serviceScope.launch {
                                 LimitPlusApp.instance.repository.closeTargetApp(targetPackage)
-                                removeOverlay()
                                 stopSelf()
                             }
                         }

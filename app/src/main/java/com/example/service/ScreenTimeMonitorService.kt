@@ -154,6 +154,13 @@ class ScreenTimeMonitorService : Service() {
                     val elapsedSeconds = ((now - lastCheckTime) / 1000L).coerceIn(1L, 10L)
                     lastCheckTime = now
 
+                    // If user just closed this app, suppress it so OS lag doesn't re-trigger prompts
+                    if (currentForeground != null && repository.isPackageSuppressed(currentForeground)) {
+                        activeForegroundPackage = null
+                        delay(1000L)
+                        continue
+                    }
+
                     if (currentForeground != activeForegroundPackage) {
                         activeForegroundPackage = currentForeground
                         repository.onForegroundAppChanged(currentForeground)
