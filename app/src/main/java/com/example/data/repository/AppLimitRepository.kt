@@ -1,0 +1,419 @@
+package com.example.data.repository
+
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import com.example.data.db.LimitPlusDatabase
+import com.example.data.entity.AppLimitConfig
+import com.example.data.entity.DailyAppUsage
+import com.example.data.entity.ExtensionSessionLog
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+
+data class PromptData(
+    val packageName: String,
+    val appName: String,
+    val baselineMinutes: Int,
+    val isRelaunchAfterExhaustion: Boolean,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class InstalledAppItem(
+    val packageName: String,
+    val appName: String,
+    val isMonitored: Boolean,
+    val baselineMinutes: Int,
+    val todayBaselineUsedSeconds: Long,
+    val todayOvertimeUsedSeconds: Long,
+    val extensionsCountToday: Int,
+    val isBaselineExhausted: Boolean,
+    val isCurrentlyActive: Boolean,
+    val isUnderActiveExtension: Boolean
+)
+
+class AppLimitRepository(
+    private val context: Context,
+    private val database: LimitPlusDatabase
+) {
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val configDao = database.appLimitConfigDao()
+    private val usageDao = database.dailyUsageDao()
+    private val logDao = database.extensionLogDao()
+
+    // Active in-memory session tracking
+    private val _activeForegroundPackage = MutableStateFlow<String?>(null)
+    val activeForegroundPackage: StateFlow<String?> = _activeForegroundPackage.asStateFlow()
+
+    private val _activeExtensionPackage = MutableStateFlow<String?>(null)
+    val activeExtensionPackage: StateFlow<String?> = _activeExtensionPackage.asStateFlow()
+
+    private val _activeExtensionExpiresAt = MutableStateFlow<Long?>(null)
+    val activeExtensionExpiresAt: StateFlow<Long?> = _activeExtensionExpiresAt.asStateFlow()
+
+    private val _currentPrompt = MutableStateFlow<PromptData?>(null)
+    val currentPrompt: StateFlow<PromptData?> = _currentPrompt.asStateFlow()
+
+    val allConfigsFlow: Flow<List<AppLimitConfig>> = configDao.getAllFlow()
+    val recentLogsFlow: Flow<List<ExtensionSessionLog>> = logDao.getRecentLogsFlow()
+
+    fun getTodayDateString(): String {
+        return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+    }
+
+    init {
+        scope.launch {
+            seedDefaultAndInstalledApps()
+        }
+    }
+
+    /**
+     * Seeds popular preset apps (YouTube, Instagram, TikTok, Chrome, Reddit, X)
+     * and queries device installed launcher apps.
+     */
+    suspend fun seedDefaultAndInstalledApps() {
+        val existing = configDao.getAllList()
+        val existingMap = existing.associateBy { it.packageName }
+        val toInsert = mutableListOf<AppLimitConfig>()
+
+        // Popular presets for instant testing / demonstration
+        val presets = listOf(
+            AppLimitConfig(
+                packageName = "com.google.android.youtube",
+                appName = "YouTube",
+                isMonitored = true,
+                baselineMinutes = 20,
+                isCustomOrPreset = true
+            ),
+            AppLimitConfig(
+                packageName = "com.instagram.android",
+                appName = "Instagram",
+                isMonitored = true,
+                baselineMinutes = 15,
+                isCustomOrPreset = true
+            ),
+            AppLimitConfig(
+                packageName = "com.zhiliaoapp.musically",
+                appName = "TikTok",
+                isMonitored = true,
+                baselineMinutes = 15,
+                isCustomOrPreset = true
+            ),
+            AppLimitConfig(
+                packageName = "com.android.chrome",
+                appName = "Google Chrome",
+                isMonitored = false,
+                baselineMinutes = 30,
+                isCustomOrPreset = true
+            ),
+            AppLimitConfig(
+                packageName = "com.reddit.frontpage",
+                appName = "Reddit",
+                isMonitored = false,
+                baselineMinutes = 25,
+                isCustomOrPreset = true
+            ),
+            AppLimitConfig(
+                packageName = "com.twitter.android",
+                appName = "X (Twitter)",
+                isMonitored = false,
+                baselineMinutes = 20,
+                isCustomOrPreset = true
+            )
+        )
+
+        for (preset in presets) {
+            if (!existingMap.containsKey(preset.packageName)) {
+                toInsert.add(preset)
+            }
+        }
+
+        // Query device installed launchable packages
+        try {
+            val pm = context.packageManager
+            val intent = Intent(Intent.ACTION_MAIN, null).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+            }
+            val resolveInfos = pm.queryIntentActivities(intent, 0)
+            for (info in resolveInfos) {
+                val pkg = info.activityInfo.packageName
+                if (pkg != context.packageName && !existingMap.containsKey(pkg) && toInsert.none { it.packageName == pkg }) {
+                    val label = info.loadLabel(pm).toString()
+                    toInsert.add(
+                        AppLimitConfig(
+                            packageName = pkg,
+                            appName = label,
+                            isMonitored = false,
+                            baselineMinutes = 20,
+                            isCustomOrPreset = false
+                        )
+                    )
+                }
+            }
+        } catch (_: Exception) { }
+
+        if (toInsert.isNotEmpty()) {
+            configDao.insertAll(toInsert)
+        }
+    }
+
+    suspend fun setMonitored(packageName: String, isMonitored: Boolean) {
+        configDao.setMonitored(packageName, isMonitored)
+    }
+
+    suspend fun updateBaseline(packageName: String, baselineMinutes: Int) {
+        configDao.updateBaseline(packageName, baselineMinutes.coerceAtLeast(1))
+    }
+
+    suspend fun addCustomApp(packageName: String, appName: String, baselineMinutes: Int) {
+        configDao.insertOrUpdate(
+            AppLimitConfig(
+                packageName = packageName,
+                appName = appName,
+                isMonitored = true,
+                baselineMinutes = baselineMinutes.coerceAtLeast(1),
+                isCustomOrPreset = true
+            )
+        )
+    }
+
+    fun getUsageForDateFlow(date: String = getTodayDateString()): Flow<List<DailyAppUsage>> {
+        return usageDao.getAllForDateFlow(date)
+    }
+
+    suspend fun getUsageForPackage(packageName: String, date: String = getTodayDateString()): DailyAppUsage {
+        val existing = usageDao.getUsage(packageName, date)
+        if (existing != null) return existing
+        val newUsage = DailyAppUsage(
+            id = "${packageName}_$date",
+            packageName = packageName,
+            date = date
+        )
+        usageDao.insertOrUpdate(newUsage)
+        return newUsage
+    }
+
+    /**
+     * Core Time Tracking Engine:
+     * Evaluates active foreground app and checks whether it has exceeded baseline.
+     */
+    suspend fun onForegroundAppChanged(newPackage: String?) {
+        val previousPackage = _activeForegroundPackage.value
+        _activeForegroundPackage.value = newPackage
+
+        val activeExtPkg = _activeExtensionPackage.value
+        val extExpiresAt = _activeExtensionExpiresAt.value
+
+        // RULE: Session Termination & Strict Baseline Preservation:
+        // As soon as the user exits or closes the target application, the temporary extension immediately ends.
+        // The configured daily baseline remains strictly intact.
+        if (activeExtPkg != null && activeExtPkg != newPackage) {
+            logDao.insert(
+                ExtensionSessionLog(
+                    packageName = activeExtPkg,
+                    appName = configDao.getByPackage(activeExtPkg)?.appName ?: activeExtPkg,
+                    status = "TERMINATED_ON_EXIT"
+                )
+            )
+            _activeExtensionPackage.value = null
+            _activeExtensionExpiresAt.value = null
+        }
+
+        if (newPackage == null || newPackage == context.packageName) {
+            return
+        }
+
+        val config = configDao.getByPackage(newPackage) ?: return
+        if (!config.isMonitored) return
+
+        val today = getTodayDateString()
+        val usage = getUsageForPackage(newPackage, today)
+
+        val isUnderValidExtension = activeExtPkg == newPackage &&
+                extExpiresAt != null &&
+                System.currentTimeMillis() < extExpiresAt
+
+        if (isUnderValidExtension) {
+            // App is allowed under current temporary 5m extension window
+            return
+        }
+
+        // Check if baseline is exhausted
+        if (usage.isBaselineExhausted(config.baselineMinutes)) {
+            // App reached limit or user re-opened exhausted app!
+            val isRelaunch = (previousPackage != newPackage)
+            showPrompt(
+                PromptData(
+                    packageName = newPackage,
+                    appName = config.appName,
+                    baselineMinutes = config.baselineMinutes,
+                    isRelaunchAfterExhaustion = isRelaunch
+                )
+            )
+        }
+    }
+
+    /**
+     * Called periodically during monitoring to accumulate elapsed time
+     * while the user is actively using an app.
+     */
+    suspend fun recordUsageTick(packageName: String, elapsedSeconds: Long) {
+        val config = configDao.getByPackage(packageName) ?: return
+        if (!config.isMonitored) return
+
+        val today = getTodayDateString()
+        val usage = getUsageForPackage(packageName, today)
+        val baselineMaxSeconds = config.baselineMinutes * 60L
+
+        val currentBaseline = usage.baselineUsedSeconds
+        val now = System.currentTimeMillis()
+
+        if (currentBaseline < baselineMaxSeconds) {
+            val spaceInBaseline = baselineMaxSeconds - currentBaseline
+            val toAddBaseline = elapsedSeconds.coerceAtMost(spaceInBaseline)
+            val spillover = elapsedSeconds - toAddBaseline
+
+            val updatedBaseline = currentBaseline + toAddBaseline
+            val updatedOvertime = usage.overtimeUsedSeconds + spillover.coerceAtLeast(0L)
+
+            val updatedUsage = usage.copy(
+                baselineUsedSeconds = updatedBaseline,
+                overtimeUsedSeconds = updatedOvertime,
+                lastActiveTimestamp = now
+            )
+            usageDao.insertOrUpdate(updatedUsage)
+
+            // Did we just hit baseline limit?
+            if (updatedBaseline >= baselineMaxSeconds) {
+                val activeExt = _activeExtensionPackage.value
+                val expiresAt = _activeExtensionExpiresAt.value
+                val hasExtension = activeExt == packageName && expiresAt != null && now < expiresAt
+                if (!hasExtension) {
+                    showPrompt(
+                        PromptData(
+                            packageName = packageName,
+                            appName = config.appName,
+                            baselineMinutes = config.baselineMinutes,
+                            isRelaunchAfterExhaustion = false
+                        )
+                    )
+                }
+            }
+        } else {
+            // Baseline already exhausted, active usage counts toward overtime
+            val updatedUsage = usage.copy(
+                overtimeUsedSeconds = usage.overtimeUsedSeconds + elapsedSeconds,
+                lastActiveTimestamp = now
+            )
+            usageDao.insertOrUpdate(updatedUsage)
+
+            // Check if extension expired while inside app
+            val activeExt = _activeExtensionPackage.value
+            val expiresAt = _activeExtensionExpiresAt.value
+            if (activeExt == packageName && expiresAt != null && now >= expiresAt) {
+                // 5m expired! Prompt reappears offering another 5-minute extension
+                _activeExtensionExpiresAt.value = null
+                showPrompt(
+                    PromptData(
+                        packageName = packageName,
+                        appName = config.appName,
+                        baselineMinutes = config.baselineMinutes,
+                        isRelaunchAfterExhaustion = false
+                    )
+                )
+            } else if (activeExt != packageName) {
+                showPrompt(
+                    PromptData(
+                        packageName = packageName,
+                        appName = config.appName,
+                        baselineMinutes = config.baselineMinutes,
+                        isRelaunchAfterExhaustion = true
+                    )
+                )
+            }
+        }
+    }
+
+    /**
+     * User taps "Add +5 Minutes":
+     * Grants a temporary 5-minute extension window.
+     * Baseline limit is strictly preserved!
+     */
+    suspend fun grantFiveMinuteExtension(packageName: String, appName: String) {
+        val now = System.currentTimeMillis()
+        val durationMs = 5 * 60 * 1000L
+        _activeExtensionPackage.value = packageName
+        _activeExtensionExpiresAt.value = now + durationMs
+        _currentPrompt.value = null
+
+        val today = getTodayDateString()
+        usageDao.incrementExtensionCount(packageName, today)
+
+        logDao.insert(
+            ExtensionSessionLog(
+                packageName = packageName,
+                appName = appName,
+                timestamp = now,
+                extensionMinutes = 5,
+                status = "GRANTED"
+            )
+        )
+    }
+
+    /**
+     * Closes the target application and immediately sends the user to the Home launcher.
+     * Temporary extension is terminated immediately.
+     */
+    suspend fun closeTargetApp(packageName: String) {
+        _currentPrompt.value = null
+        _activeExtensionPackage.value = null
+        _activeExtensionExpiresAt.value = null
+
+        logDao.insert(
+            ExtensionSessionLog(
+                packageName = packageName,
+                appName = configDao.getByPackage(packageName)?.appName ?: packageName,
+                status = "TERMINATED_USER_CLOSED"
+            )
+        )
+
+        // Launch Home screen
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        context.startActivity(homeIntent)
+    }
+
+    fun showPrompt(data: PromptData) {
+        _currentPrompt.value = data
+    }
+
+    fun dismissPrompt() {
+        _currentPrompt.value = null
+    }
+
+    /**
+     * Daily midnight reset:
+     * Clears consumed daily usage while keeping all configured baseline limits intact.
+     */
+    suspend fun resetTodayUsage(date: String = getTodayDateString()) {
+        usageDao.clearUsageForDate(date)
+        _activeExtensionPackage.value = null
+        _activeExtensionExpiresAt.value = null
+        _currentPrompt.value = null
+    }
+}

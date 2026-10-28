@@ -1,0 +1,6 @@
+{
+  "name": "LimitPlus",
+  "description": "Screen Time & App Limit Controller with an immutable daily baseline timer and temporary +5 minute extensions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
