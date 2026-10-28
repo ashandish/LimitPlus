@@ -81,7 +81,7 @@ class LimitPlusViewModel(
     // Combine configs, daily usages, foreground app, active extension, and search query into list
     val appsList: StateFlow<List<InstalledAppItem>> = combine(
         repository.allConfigsFlow,
-        repository.getUsageForDateFlow(),
+        repository.todayUsageFlow,
         repository.activeForegroundPackage,
         repository.activeExtensionPackage,
         _searchQuery
@@ -142,6 +142,12 @@ class LimitPlusViewModel(
         // Ticking loop for extension countdown and midnight timer
         viewModelScope.launch {
             while (isActive) {
+                // Automated rollover check if calendar day changed
+                val todayDate = repository.getTodayDateString()
+                if (todayDate != repository.currentDateFlow.value) {
+                    repository.onMidnightRollover()
+                }
+
                 _permissions.value = checkPermissions()
                 _timeUntilMidnight.value = calculateTimeUntilMidnight()
 
@@ -208,9 +214,9 @@ class LimitPlusViewModel(
         }
     }
 
-    fun resetTodayUsage() {
+    fun triggerMidnightRollover() {
         viewModelScope.launch {
-            repository.resetTodayUsage()
+            repository.onMidnightRollover()
         }
     }
 

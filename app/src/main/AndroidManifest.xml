@@ -68,10 +68,6 @@
                 android:value="Screen time monitoring and app limit enforcement" />
         </service>
 
-        <!-- Broadcast receiver for quick notification actions -->
-        <receiver
-            android:name=".service.LimitActionReceiver"
-            android:exported="false" />
 
         <!-- Boot receiver to resume monitoring on device start -->
         <receiver
@@ -80,6 +76,18 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Automated daily midnight reset receiver -->
+        <receiver
+            android:name=".service.MidnightResetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="com.aistudio.limitplus.ACTION_MIDNIGHT_ALARM" />
             </intent-filter>
         </receiver>
 

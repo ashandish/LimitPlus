@@ -44,6 +44,7 @@ class ScreenTimeMonitorService : Service() {
         cacheLauncherPackages()
         startForeground(NOTIFICATION_ID, buildForegroundNotification("Active: Monitoring daily baselines"))
         observePrompts()
+        MidnightResetReceiver.scheduleNextMidnightAlarm(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -89,12 +90,14 @@ class ScreenTimeMonitorService : Service() {
         }
     }
 
+    private var lastDispatchedPromptPackage: String? = null
+
     private fun dispatchPromptToUser(prompt: PromptData) {
-        // Cancel any lingering alert notification so there is strictly only one popup at center
-        try {
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.cancel(ALERT_NOTIFICATION_ID)
-        } catch (_: Exception) {}
+        if (lastDispatchedPromptPackage == prompt.packageName) {
+            // Already dispatched and showing, keep it still on screen
+            return
+        }
+        lastDispatchedPromptPackage = prompt.packageName
 
         // Single Centered Modal Popup Notification:
         // Priority 1: Floating system overlay window centered over the active app
@@ -120,12 +123,9 @@ class ScreenTimeMonitorService : Service() {
     }
 
     private fun dismissAllPrompts() {
+        lastDispatchedPromptPackage = null
         try {
             stopService(Intent(this, FloatingOverlayService::class.java))
-        } catch (_: Exception) {}
-        try {
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.cancel(ALERT_NOTIFICATION_ID)
         } catch (_: Exception) {}
     }
 
@@ -137,8 +137,18 @@ class ScreenTimeMonitorService : Service() {
             val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
             var syncCounter = 0
 
+            var lastRecordedDate = repository.getTodayDateString()
+
             while (isActive) {
                 try {
+                    // Automated Midnight Rollover Check
+                    val todayDate = repository.getTodayDateString()
+                    if (todayDate != lastRecordedDate) {
+                        lastRecordedDate = todayDate
+                        repository.onMidnightRollover()
+                        MidnightResetReceiver.scheduleNextMidnightAlarm(this@ScreenTimeMonitorService)
+                    }
+
                     val currentForeground = detectForegroundApp(usageStatsManager)
                     val now = System.currentTimeMillis()
                     val elapsedSeconds = ((now - lastCheckTime) / 1000L).coerceIn(1L, 10L)
@@ -266,7 +276,6 @@ class ScreenTimeMonitorService : Service() {
 
     companion object {
         const val NOTIFICATION_ID = 4001
-        const val ALERT_NOTIFICATION_ID = 4002
 
         fun startService(context: Context) {
             val intent = Intent(context, ScreenTimeMonitorService::class.java)

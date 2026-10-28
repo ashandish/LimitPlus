@@ -212,8 +212,7 @@ class MainActivity : ComponentActivity() {
                                     timeUntilMidnight = timeUntilMidnight,
                                     recentLogs = recentLogs,
                                     onGrantExtension = viewModel::grantExtension,
-                                    onCloseApp = viewModel::closeTargetApp,
-                                    onResetTodayUsage = viewModel::resetTodayUsage
+                                    onCloseApp = viewModel::closeTargetApp
                                 )
                                 2 -> PermissionsScreen(
                                     permissions = permissions

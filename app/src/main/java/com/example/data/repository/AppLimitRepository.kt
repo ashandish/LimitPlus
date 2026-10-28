@@ -19,10 +19,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -34,8 +36,7 @@ data class PromptData(
     val packageName: String,
     val appName: String,
     val baselineMinutes: Int,
-    val isRelaunchAfterExhaustion: Boolean,
-    val timestamp: Long = System.currentTimeMillis()
+    val isRelaunchAfterExhaustion: Boolean
 )
 
 data class InstalledAppItem(
@@ -75,6 +76,14 @@ class AppLimitRepository(
 
     val allConfigsFlow: Flow<List<AppLimitConfig>> = configDao.getAllFlow()
     val recentLogsFlow: Flow<List<ExtensionSessionLog>> = logDao.getRecentLogsFlow()
+
+    private val _currentDateFlow = MutableStateFlow(getTodayDateString())
+    val currentDateFlow: StateFlow<String> = _currentDateFlow.asStateFlow()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val todayUsageFlow: Flow<List<DailyAppUsage>> = _currentDateFlow.flatMapLatest { date ->
+        usageDao.getAllForDateFlow(date)
+    }
 
     fun getTodayDateString(): String {
         return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
@@ -499,6 +508,12 @@ class AppLimitRepository(
     }
 
     fun showPrompt(data: PromptData) {
+        val current = _currentPrompt.value
+        // If the prompt is already displayed for this target package, do not re-emit.
+        // This keeps the modal popup completely still and eliminates jitter/movement.
+        if (current != null && current.packageName == data.packageName) {
+            return
+        }
         _currentPrompt.value = data
     }
 
@@ -507,7 +522,25 @@ class AppLimitRepository(
     }
 
     /**
-     * Daily midnight reset:
+     * Automated Daily Midnight Reset:
+     * Triggers automatically when passing midnight into a new calendar day.
+     * All user-configured baseline limits in AppLimitConfig stay strictly intact.
+     * Daily usage automatically restarts fresh from 0 for the new day.
+     * Any previous day extension or prompt is cleared.
+     * Manual resets are forbidden and removed from user control.
+     */
+    suspend fun onMidnightRollover() {
+        val newDate = getTodayDateString()
+        if (_currentDateFlow.value != newDate) {
+            _currentDateFlow.value = newDate
+        }
+        _activeExtensionPackage.value = null
+        _activeExtensionExpiresAt.value = null
+        _currentPrompt.value = null
+    }
+
+    /**
+     * Automated/Testing usage reset:
      * Clears consumed daily usage while keeping all configured baseline limits intact.
      */
     suspend fun resetTodayUsage(date: String = getTodayDateString()) {

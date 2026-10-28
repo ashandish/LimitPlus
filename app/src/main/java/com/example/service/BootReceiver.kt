@@ -10,6 +10,7 @@ class BootReceiver : BroadcastReceiver() {
             intent.action == Intent.ACTION_MY_PACKAGE_REPLACED
         ) {
             ScreenTimeMonitorService.startService(context)
+            MidnightResetReceiver.scheduleNextMidnightAlarm(context)
         }
     }
 }

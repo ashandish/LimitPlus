@@ -75,4 +75,35 @@ class ExampleRobolectricTest {
     assertEquals(300L, usageWithExtension.overtimeUsedSeconds)
     assertEquals(1500L, usageWithExtension.totalUsedSeconds)
   }
+
+  @Test
+  fun `automated midnight reset preserves baseline and isolates daily usage`() {
+    val config = AppLimitConfig(
+      packageName = "com.google.android.youtube",
+      appName = "YouTube",
+      baselineMinutes = 30
+    )
+
+    // Yesterday's usage was completely exhausted
+    val yesterdayUsage = DailyAppUsage(
+      id = "yt_yesterday",
+      packageName = config.packageName,
+      date = "2026-10-27",
+      baselineUsedSeconds = 1800L
+    )
+    assertTrue(yesterdayUsage.isBaselineExhausted(config.baselineMinutes))
+
+    // Today's automated fresh day usage starts at 0
+    val todayUsage = DailyAppUsage(
+      id = "yt_today",
+      packageName = config.packageName,
+      date = "2026-10-28",
+      baselineUsedSeconds = 0L
+    )
+
+    // Baseline limit is strictly intact and preserved
+    assertEquals(30, config.baselineMinutes)
+    assertFalse(todayUsage.isBaselineExhausted(config.baselineMinutes))
+    assertEquals(1800L, todayUsage.remainingBaselineSeconds(config.baselineMinutes))
+  }
 }

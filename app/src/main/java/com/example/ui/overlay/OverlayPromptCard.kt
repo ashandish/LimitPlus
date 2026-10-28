@@ -64,15 +64,6 @@ fun OverlayPromptCard(
     onCloseApp: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scaleAnim = remember { Animatable(0.85f) }
-
-    LaunchedEffect(Unit) {
-        scaleAnim.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 260)
-        )
-    }
-
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -87,7 +78,6 @@ fun OverlayPromptCard(
             modifier = Modifier
                 .widthIn(max = 420.dp)
                 .fillMaxWidth(0.92f)
-                .scale(scaleAnim.value)
                 .testTag("overlay_prompt_dialog"),
             shape = RoundedCornerShape(28.dp),
             colors = CardDefaults.cardColors(

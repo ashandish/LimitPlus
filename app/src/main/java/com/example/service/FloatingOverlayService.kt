@@ -37,6 +37,7 @@ class FloatingOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, S
 
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
+    private var currentShowingPackage: String? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val lifecycleRegistry = LifecycleRegistry(this)
@@ -83,6 +84,11 @@ class FloatingOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         baselineMinutes: Int,
         isRelaunch: Boolean
     ) {
+        if (overlayView != null && currentShowingPackage == targetPackage) {
+            // Card is already displayed and completely still on screen
+            return
+        }
+        currentShowingPackage = targetPackage
         removeOverlay()
 
         val layoutParams = WindowManager.LayoutParams(
@@ -146,6 +152,7 @@ class FloatingOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                 windowManager?.removeView(it)
             } catch (_: Exception) {}
             overlayView = null
+            currentShowingPackage = null
         }
     }
 

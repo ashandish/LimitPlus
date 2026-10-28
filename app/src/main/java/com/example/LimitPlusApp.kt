@@ -22,6 +22,7 @@ class LimitPlusApp : Application() {
         super.onCreate()
         instance = this
         createNotificationChannels()
+        com.example.service.MidnightResetReceiver.scheduleNextMidnightAlarm(this)
     }
 
     private fun createNotificationChannels() {
@@ -38,25 +39,12 @@ class LimitPlusApp : Application() {
                 setShowBadge(false)
             }
 
-            // High-priority Channel for +5 Minute Prompts & Limit Alerts
-            val alertChannel = NotificationChannel(
-                CHANNEL_LIMIT_ALERTS,
-                "App Limit & Extension Prompts",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Alerts when an app reaches its daily baseline and needs +5m extension"
-                enableVibration(true)
-                setShowBadge(true)
-            }
-
             notificationManager.createNotificationChannel(monitorChannel)
-            notificationManager.createNotificationChannel(alertChannel)
         }
     }
 
     companion object {
         const val CHANNEL_MONITOR_SERVICE = "channel_monitor_service"
-        const val CHANNEL_LIMIT_ALERTS = "channel_limit_alerts"
 
         lateinit var instance: LimitPlusApp
             private set

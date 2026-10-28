@@ -1,5 +1,6 @@
 package com.example.ui.monitor
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -62,7 +64,6 @@ fun SessionMonitorScreen(
     recentLogs: List<ExtensionSessionLog>,
     onGrantExtension: (String, String) -> Unit = { _, _ -> },
     onCloseApp: (String) -> Unit = {},
-    onResetTodayUsage: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -76,8 +77,7 @@ fun SessionMonitorScreen(
         // Daily Midnight Reset Information Card
         item {
             MidnightResetCard(
-                timeUntilMidnight = timeUntilMidnight,
-                onManualReset = onResetTodayUsage
+                timeUntilMidnight = timeUntilMidnight
             )
         }
 
@@ -145,11 +145,12 @@ fun SessionMonitorScreen(
 
 @Composable
 fun MidnightResetCard(
-    timeUntilMidnight: String,
-    onManualReset: () -> Unit
+    timeUntilMidnight: String
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("midnight_reset_card"),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF131D31)),
         border = CardDefaults.outlinedCardBorder().copy(
@@ -182,7 +183,7 @@ fun MidnightResetCard(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Daily Midnight Reset",
+                    text = "Automated Midnight Reset",
                     style = MaterialTheme.typography.titleSmall.copy(
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -190,7 +191,7 @@ fun MidnightResetCard(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "$timeUntilMidnight until daily usage resets to 0. Configured baselines stay strictly intact.",
+                    text = "$timeUntilMidnight until automatic reset at 00:00. Baselines remain strictly preserved, and manual resets are locked.",
                     style = MaterialTheme.typography.bodySmall.copy(
                         color = Color(0xFF94A3B8),
                         fontSize = 11.5.sp
@@ -198,20 +199,33 @@ fun MidnightResetCard(
                 )
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
-            Button(
-                onClick = onManualReset,
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E2942))
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = EmeraldSuccess.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, EmeraldSuccess.copy(alpha = 0.35f))
             ) {
-                Text(
-                    text = "Reset Now",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        color = CyanLight,
-                        fontWeight = FontWeight.Bold
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Automated and locked",
+                        tint = EmeraldSuccess,
+                        modifier = Modifier.size(13.dp)
                     )
-                )
+                    Text(
+                        text = "Auto",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = EmeraldSuccess,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        )
+                    )
+                }
             }
         }
     }
