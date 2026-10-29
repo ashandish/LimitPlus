@@ -119,14 +119,14 @@ fun DashboardScreen(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Permissions Setup Required",
+                            text = "Permissions Required",
                             style = MaterialTheme.typography.titleSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
                         )
                         Text(
-                            text = "Tap to grant Usage Access & Draw Over Apps for full background protection.",
+                            text = "Tap to grant required permissions for screen time tracking.",
                             style = MaterialTheme.typography.bodySmall.copy(
                                 color = Color(0xFFFDA4AF),
                                 fontSize = 11.sp
@@ -201,13 +201,13 @@ fun DashboardScreen(
                 modifier = Modifier.weight(1f)
             )
             SummaryMetricCard(
-                title = "Exhausted",
+                title = "Limit Reached",
                 value = "$exhaustedCount",
                 accentColor = if (exhaustedCount > 0) CoralAlert else IndigoLight,
                 modifier = Modifier.weight(1f)
             )
             SummaryMetricCard(
-                title = "+5m Added",
+                title = "+5m Sessions",
                 value = "$extensionsCount",
                 accentColor = EmeraldSuccess,
                 modifier = Modifier.weight(1f)
@@ -453,7 +453,7 @@ fun AppLimitCard(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "Daily Baseline: ${app.baselineMinutes}m (Tap to edit)",
+                                    text = "Limit: ${app.baselineMinutes}m • Tap to edit",
                                     style = MaterialTheme.typography.labelMedium.copy(
                                         color = Color(0xFFE2E8F0),
                                         fontWeight = FontWeight.Medium
@@ -490,7 +490,6 @@ fun AppLimitCard(
                         Spacer(modifier = Modifier.height(10.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Surface(
@@ -513,7 +512,7 @@ fun AppLimitCard(
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "+5m Overtime: ${overtimeMinutes}m (${app.extensionsCountToday} extensions)",
+                                        text = "+${overtimeMinutes}m overtime (${app.extensionsCountToday} extensions)",
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             color = EmeraldSuccess,
                                             fontWeight = FontWeight.SemiBold
@@ -521,14 +520,6 @@ fun AppLimitCard(
                                     )
                                 }
                             }
-
-                            Text(
-                                text = "Baseline untouched 🔒",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    color = Color(0xFF64748B),
-                                    fontSize = 10.sp
-                                )
-                            )
                         }
                     }
                 }
@@ -550,7 +541,7 @@ fun BaselineLimitDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "Set Baseline for ${app.appName}",
+                text = "Daily Limit for ${app.appName}",
                 style = MaterialTheme.typography.titleLarge.copy(
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -560,7 +551,7 @@ fun BaselineLimitDialog(
         text = {
             Column {
                 Text(
-                    text = "This daily baseline is strictly immutable. Temporary +5m extensions will never permanently increase this value.",
+                    text = "Select maximum allowed daily screen time.",
                     style = MaterialTheme.typography.bodyMedium.copy(
                         color = Color(0xFF94A3B8),
                         lineHeight = 18.sp
@@ -570,7 +561,7 @@ fun BaselineLimitDialog(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = "Selected Quota: $selectedMinutes minutes / day",
+                    text = "$selectedMinutes minutes per day",
                     style = MaterialTheme.typography.titleMedium.copy(
                         color = CyanLight,
                         fontWeight = FontWeight.Bold
@@ -611,7 +602,7 @@ fun BaselineLimitDialog(
                 onClick = { onConfirm(selectedMinutes) },
                 colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
             ) {
-                Text("Save Baseline", fontWeight = FontWeight.Bold)
+                Text("Save Limit", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {

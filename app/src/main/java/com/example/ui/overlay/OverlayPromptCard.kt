@@ -169,7 +169,7 @@ fun OverlayPromptCard(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Baseline: $baselineMinutes min",
+                            text = "Limit: $baselineMinutes min",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 color = Color(0xFF94A3B8)
                             )
@@ -179,12 +179,12 @@ fun OverlayPromptCard(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Core prompt text per specifications
+                // Core prompt text
                 Text(
                     text = if (isRelaunch) {
                         "$appName daily limit has expired. Open for 5 minutes?"
                     } else {
-                        "You have reached your $baselineMinutes-minute daily limit for $appName. Would you like to add 5 more minutes?"
+                        "You reached your $baselineMinutes-minute limit for $appName. Add 5 more minutes?"
                     },
                     style = MaterialTheme.typography.bodyLarge.copy(
                         color = Color(0xFFE2E8F0),
@@ -196,14 +196,13 @@ fun OverlayPromptCard(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Baseline Preservation Note
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = Color(0xFF0F172A).copy(alpha = 0.7f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "🔒 Daily baseline ($baselineMinutes min) will NOT be increased. Temporary session terminates as soon as you exit the app.",
+                        text = "Adds a 5-minute session. Your daily limit ($baselineMinutes min) remains unchanged.",
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = Color(0xFF94A3B8),
                             fontSize = 11.5.sp,

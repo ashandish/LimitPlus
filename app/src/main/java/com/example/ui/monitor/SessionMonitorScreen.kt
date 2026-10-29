@@ -95,7 +95,7 @@ fun SessionMonitorScreen(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Today's Extension Audit Trail",
+                    text = "Today's Extensions",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -123,12 +123,16 @@ fun SessionMonitorScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "No temporary extensions requested yet today.",
-                            style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF94A3B8)),
+                            text = "No extensions today",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF94A3B8)
+                            ),
                             textAlign = TextAlign.Center
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "When a monitored app limit expires, temporary extensions granted from the overlay or notification appear here.",
+                            text = "When you add +5 minutes to an app, it will appear here.",
                             style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF64748B)),
                             textAlign = TextAlign.Center
                         )
@@ -183,7 +187,7 @@ fun MidnightResetCard(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Automated Midnight Reset",
+                    text = "Daily Midnight Reset",
                     style = MaterialTheme.typography.titleSmall.copy(
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -191,7 +195,7 @@ fun MidnightResetCard(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "$timeUntilMidnight until automatic reset at 00:00. Baselines remain strictly preserved, and manual resets are locked.",
+                    text = "Resets usage automatically in $timeUntilMidnight (at 00:00).",
                     style = MaterialTheme.typography.bodySmall.copy(
                         color = Color(0xFF94A3B8),
                         fontSize = 11.5.sp
@@ -291,10 +295,10 @@ fun ExtensionLogItem(log: ExtensionSessionLog) {
                 )
                 Text(
                     text = when (log.status) {
-                        "GRANTED" -> "+5 Minute Temporary Extension Granted"
-                        "TERMINATED_ON_EXIT" -> "Terminated on Exit (Baseline Preserved)"
-                        "TERMINATED_USER_CLOSED" -> "App Closed (Sent to Home Screen)"
-                        else -> "Session Complete"
+                        "GRANTED" -> "+5 Minutes Added"
+                        "TERMINATED_ON_EXIT" -> "Ended on app exit"
+                        "TERMINATED_USER_CLOSED" -> "App closed (Home screen)"
+                        else -> "Completed"
                     },
                     style = MaterialTheme.typography.bodySmall.copy(
                         color = when (log.status) {

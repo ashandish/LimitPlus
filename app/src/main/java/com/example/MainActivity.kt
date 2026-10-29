@@ -21,8 +21,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -125,7 +125,7 @@ class MainActivity : ComponentActivity() {
                                             color = if (sessionState.isUnderActiveExtension) EmeraldSuccess.copy(0.2f) else CyanPrimary.copy(0.2f)
                                         ) {
                                             Text(
-                                                text = if (sessionState.isUnderActiveExtension) "+5m Active" else "Protected",
+                                                text = if (sessionState.isUnderActiveExtension) "+5m Active" else "Active",
                                                 style = MaterialTheme.typography.labelSmall.copy(
                                                     color = if (sessionState.isUnderActiveExtension) EmeraldSuccess else CyanLight,
                                                     fontWeight = FontWeight.Bold,
@@ -177,7 +177,7 @@ class MainActivity : ComponentActivity() {
                                 NavigationBarItem(
                                     selected = selectedTab == 2,
                                     onClick = { selectedTab = 2 },
-                                    icon = { Icon(Icons.Default.Security, contentDescription = "Permissions") },
+                                    icon = { Icon(Icons.Default.Tune, contentDescription = "Permissions") },
                                     label = { Text("Permissions", fontWeight = FontWeight.SemiBold) },
                                     modifier = Modifier.testTag("nav_permissions"),
                                     colors = NavigationBarItemDefaults.colors(

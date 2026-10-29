@@ -244,7 +244,7 @@ class ScreenTimeMonitorService : Service() {
                 }
                 "Active: Monitoring $appName"
             } else {
-                "Active: Protecting daily baselines"
+                "Active: Monitoring daily limits"
             }
             notificationManager.notify(NOTIFICATION_ID, buildForegroundNotification(text))
         } catch (_: Exception) {}
