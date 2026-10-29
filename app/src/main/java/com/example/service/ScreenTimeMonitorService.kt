@@ -82,6 +82,10 @@ class ScreenTimeMonitorService : Service() {
         serviceScope.launch {
             repository.currentPrompt.collect { prompt ->
                 if (prompt != null) {
+                    if (activeForegroundPackage == packageName) {
+                        dismissAllPrompts()
+                        return@collect
+                    }
                     dispatchPromptToUser(prompt)
                 } else {
                     dismissAllPrompts()
@@ -93,6 +97,9 @@ class ScreenTimeMonitorService : Service() {
     private var lastDispatchedPromptPackage: String? = null
 
     private fun dispatchPromptToUser(prompt: PromptData) {
+        if (activeForegroundPackage == packageName) {
+            return
+        }
         if (lastDispatchedPromptPackage == prompt.packageName) {
             // Already dispatched and showing, keep it still on screen
             return
@@ -214,9 +221,7 @@ class ScreenTimeMonitorService : Service() {
                 now
             )
             if (!statsList.isNullOrEmpty()) {
-                val mostRecent = statsList
-                    .filter { it.packageName != packageName }
-                    .maxByOrNull { it.lastTimeUsed }
+                val mostRecent = statsList.maxByOrNull { it.lastTimeUsed }
 
                 if (mostRecent != null && (now - mostRecent.lastTimeUsed) < 4_000L) {
                     activeForegroundPackage = mostRecent.packageName

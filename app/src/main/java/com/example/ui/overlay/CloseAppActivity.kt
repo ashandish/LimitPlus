@@ -12,11 +12,12 @@ import android.os.Bundle
 import com.example.LimitPlusApp
 
 /**
- * Dedicated foreground activity that reliably brings the Android Home screen to the front,
- * stops background media/video playback, and terminates target app background processes.
+ * Isolated transient activity that executes in its own task affinity.
+ * It transitions the user to the Home screen, halts media playback in the target app,
+ * and terminates background processes of the target app.
  *
- * Calling startActivity(homeIntent) from an active foreground Activity is guaranteed by Android
- * ActivityTaskManager, unlike attempts to start non-package activities from background services.
+ * Runs completely isolated from LimitPlus's MainActivity task so that launching LimitPlus
+ * from the Android launcher is never affected.
  */
 class CloseAppActivity : Activity() {
 
@@ -28,7 +29,7 @@ class CloseAppActivity : Activity() {
             LimitPlusApp.instance.repository.closeTargetApp(targetPackage)
         }
 
-        // 1. Immediately seize audio focus to halt playback in YouTube/media apps and prevent PiP
+        // 1. Halt audio/media playback immediately to stop PiP
         try {
             val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -61,7 +62,7 @@ class CloseAppActivity : Activity() {
             startActivity(homeIntent)
         } catch (_: Exception) {}
 
-        // 3. Kill background processes of the target app now that it has been moved to background
+        // 3. Terminate background processes of the target app
         if (targetPackage != null) {
             try {
                 val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
@@ -69,8 +70,8 @@ class CloseAppActivity : Activity() {
             } catch (_: Exception) {}
         }
 
-        // Close this transient activity immediately
-        finishAndRemoveTask()
+        // Finish transient activity cleanly without destroying the app's main task
+        finish()
         @Suppress("DEPRECATION")
         overridePendingTransition(0, 0)
     }
@@ -80,9 +81,7 @@ class CloseAppActivity : Activity() {
 
         fun start(context: Context, targetPackage: String) {
             val intent = Intent(context, CloseAppActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TASK or
-                        Intent.FLAG_ACTIVITY_NO_ANIMATION
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION
                 putExtra(EXTRA_TARGET_PACKAGE, targetPackage)
             }
             context.startActivity(intent)

@@ -62,6 +62,11 @@ import com.example.ui.viewmodel.LimitPlusViewModel
 
 class MainActivity : ComponentActivity() {
 
+    override fun onResume() {
+        super.onResume()
+        LimitPlusApp.instance.repository.dismissPrompt()
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

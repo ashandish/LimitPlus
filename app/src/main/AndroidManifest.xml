@@ -59,7 +59,9 @@
             android:autoRemoveFromRecents="true"
             android:excludeFromRecents="true"
             android:exported="false"
+            android:launchMode="singleInstance"
             android:noHistory="true"
+            android:taskAffinity="com.aistudio.limitplus.transient"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <!-- Floating Window Overlay Service -->

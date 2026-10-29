@@ -462,11 +462,7 @@ class AppLimitRepository(
             }
         } catch (_: Exception) {}
 
-        // 2. Bring user directly to the Home screen immediately via CloseAppActivity and fallback
-        try {
-            com.example.ui.overlay.CloseAppActivity.start(context, packageName)
-        } catch (_: Exception) {}
-
+        // 2. Bring user directly to the Home screen immediately
         val homeIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
