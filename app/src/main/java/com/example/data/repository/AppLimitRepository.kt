@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import android.app.ActivityManager
 import android.app.PendingIntent
+import android.app.usage.UsageEvents
 import android.app.usage.UsageStats
 import android.app.usage.UsageStatsManager
 import android.content.Context
@@ -12,6 +13,7 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
+import android.util.Log
 import com.example.data.db.LimitPlusDatabase
 import com.example.data.entity.AppLimitConfig
 import com.example.data.entity.DailyAppUsage
@@ -205,6 +207,11 @@ class AppLimitRepository(
      * This ensures that any time spent in YouTube, Facebook, Instagram, etc. is immediately
      * reflected in LimitPlus, even before or between polling ticks.
      */
+    /**
+     * Synchronizes authoritative daily screen time metrics from Android's UsageEvents.
+     * Crucially, queries events strictly between today's startOfDay (00:00:00) and now,
+     * ensuring yesterday's usage interval buckets NEVER bleed into the new day's usage.
+     */
     suspend fun syncWithSystemUsageStats(usageStatsManager: UsageStatsManager?) {
         if (usageStatsManager == null) return
         val cal = Calendar.getInstance().apply {
@@ -215,23 +222,17 @@ class AppLimitRepository(
         }
         val startOfDay = cal.timeInMillis
         val now = System.currentTimeMillis()
+        if (now <= startOfDay) return
 
         try {
-            val statsList = usageStatsManager.queryUsageStats(
-                UsageStatsManager.INTERVAL_DAILY,
-                startOfDay,
-                now
-            ) ?: return
+            val usageByPkg = queryTodayForegroundSeconds(usageStatsManager, startOfDay, now)
+            if (usageByPkg.isEmpty()) return
 
-            if (statsList.isEmpty()) return
-
-            val statsMap = statsList.associateBy { it.packageName }
             val configs = configDao.getAllList().filter { it.isMonitored }
             val today = getTodayDateString()
 
             for (config in configs) {
-                val stats = statsMap[config.packageName] ?: continue
-                val systemTotalSeconds = stats.totalTimeInForeground / 1000L
+                val systemTotalSeconds = usageByPkg[config.packageName] ?: continue
                 if (systemTotalSeconds <= 0L) continue
 
                 val existing = getUsageForPackage(config.packageName, today)
@@ -243,7 +244,7 @@ class AppLimitRepository(
                     val updated = existing.copy(
                         baselineUsedSeconds = maxOf(existing.baselineUsedSeconds, calculatedBaseline),
                         overtimeUsedSeconds = maxOf(existing.overtimeUsedSeconds, calculatedOvertime),
-                        lastActiveTimestamp = stats.lastTimeUsed
+                        lastActiveTimestamp = now
                     )
                     usageDao.insertOrUpdate(updated)
 
@@ -265,7 +266,53 @@ class AppLimitRepository(
                     }
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.w("AppLimitRepository", "Error syncing system usage stats", e)
+        }
+    }
+
+    /**
+     * Accurately calculates total foreground time for each package strictly since today's 00:00:00.
+     * Does NOT use coarse INTERVAL_DAILY buckets which aggregate previous days.
+     */
+    private fun queryTodayForegroundSeconds(
+        usageStatsManager: UsageStatsManager,
+        startOfDay: Long,
+        now: Long
+    ): Map<String, Long> {
+        val usageMap = mutableMapOf<String, Long>()
+        val resumeMap = mutableMapOf<String, Long>()
+        try {
+            val events = usageStatsManager.queryEvents(startOfDay, now) ?: return emptyMap()
+            val event = UsageEvents.Event()
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+                val pkg = event.packageName ?: continue
+                val timestamp = event.timeStamp
+                when (event.eventType) {
+                    UsageEvents.Event.ACTIVITY_RESUMED -> {
+                        resumeMap[pkg] = timestamp.coerceAtLeast(startOfDay)
+                    }
+                    UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> {
+                        val start = resumeMap.remove(pkg) ?: startOfDay
+                        if (timestamp > start) {
+                            val durationSec = (timestamp - start) / 1000L
+                            usageMap[pkg] = (usageMap[pkg] ?: 0L) + durationSec
+                        }
+                    }
+                }
+            }
+            // For any app currently in foreground (resumed without pause yet today)
+            for ((pkg, start) in resumeMap) {
+                if (now > start) {
+                    val durationSec = (now - start) / 1000L
+                    usageMap[pkg] = (usageMap[pkg] ?: 0L) + durationSec
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("AppLimitRepository", "Error querying UsageEvents for today", e)
+        }
+        return usageMap
     }
 
     /**
@@ -530,12 +577,18 @@ class AppLimitRepository(
      */
     suspend fun onMidnightRollover() {
         val newDate = getTodayDateString()
-        if (_currentDateFlow.value != newDate) {
-            _currentDateFlow.value = newDate
+        try {
+            // Clear any consumed usage in database for the new date so all limits reset to 0 fresh
+            usageDao.clearUsageForDate(newDate)
+        } catch (e: Exception) {
+            Log.w("AppLimitRepository", "Failed clearing usage for new date $newDate", e)
         }
+        _currentDateFlow.value = newDate
         _activeExtensionPackage.value = null
         _activeExtensionExpiresAt.value = null
         _currentPrompt.value = null
+        _activeForegroundPackage.value = null
+        Log.i("AppLimitRepository", "Automated Midnight rollover completed for $newDate. Daily limits reset.")
     }
 
     /**

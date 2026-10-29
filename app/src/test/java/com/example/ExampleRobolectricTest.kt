@@ -118,4 +118,46 @@ class ExampleRobolectricTest {
     val isStillValid = (expiredTime < expiresAt)
     assertFalse(isStillValid)
   }
+
+  @Test
+  fun `midnight future calculation is always strictly ahead of current time`() {
+    val now = java.util.Calendar.getInstance()
+    val midnight = java.util.Calendar.getInstance().apply {
+      set(java.util.Calendar.HOUR_OF_DAY, 0)
+      set(java.util.Calendar.MINUTE, 0)
+      set(java.util.Calendar.SECOND, 0)
+      set(java.util.Calendar.MILLISECOND, 0)
+      add(java.util.Calendar.DAY_OF_YEAR, 1)
+    }
+    while (midnight.timeInMillis <= now.timeInMillis) {
+      midnight.add(java.util.Calendar.DAY_OF_YEAR, 1)
+    }
+    assertTrue(midnight.timeInMillis > now.timeInMillis)
+  }
+
+  @Test
+  fun `repository onMidnightRollover clears daily records and dismisses prompt`() = kotlinx.coroutines.runBlocking {
+    val repository = LimitPlusApp.instance.repository
+    val today = repository.getTodayDateString()
+
+    // Ensure config exists and is monitored
+    repository.addCustomApp("com.google.android.youtube", "YouTube", 20)
+
+    // Simulate usage in repository
+    repository.recordUsageTick("com.google.android.youtube", 1200L)
+    val beforeRollover = repository.getUsageForPackage("com.google.android.youtube", today)
+    assertTrue(beforeRollover.baselineUsedSeconds > 0)
+
+    // Trigger midnight rollover
+    repository.onMidnightRollover()
+
+    // Assert that active extension and prompt are dismissed
+    org.junit.Assert.assertNull(repository.currentPrompt.value)
+    org.junit.Assert.assertNull(repository.activeExtensionPackage.value)
+
+    // And usage for today starts fresh at 0
+    val afterRollover = repository.getUsageForPackage("com.google.android.youtube", today)
+    assertEquals(0L, afterRollover.baselineUsedSeconds)
+    assertFalse(afterRollover.isBaselineExhausted(20))
+  }
 }

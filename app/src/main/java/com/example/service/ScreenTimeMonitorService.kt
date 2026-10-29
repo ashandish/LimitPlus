@@ -152,6 +152,9 @@ class ScreenTimeMonitorService : Service() {
                     val todayDate = repository.getTodayDateString()
                     if (todayDate != lastRecordedDate) {
                         lastRecordedDate = todayDate
+                        activeForegroundPackage = null
+                        lastCheckTime = System.currentTimeMillis()
+                        dismissAllPrompts()
                         repository.onMidnightRollover()
                         MidnightResetReceiver.scheduleNextMidnightAlarm(this@ScreenTimeMonitorService)
                     }
@@ -171,7 +174,7 @@ class ScreenTimeMonitorService : Service() {
 
                     // Periodically sync authoritative system usage stats from Android OS
                     syncCounter++
-                    if (syncCounter >= 3) {
+                    if (syncCounter >= 15) {
                         syncCounter = 0
                         repository.syncWithSystemUsageStats(usageStatsManager)
                     }

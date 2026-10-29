@@ -261,13 +261,16 @@ class LimitPlusViewModel(
     private fun calculateTimeUntilMidnight(): String {
         val now = Calendar.getInstance()
         val midnight = Calendar.getInstance().apply {
-            add(Calendar.DAY_OF_YEAR, 1)
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
+            add(Calendar.DAY_OF_YEAR, 1)
         }
-        val diffMs = midnight.timeInMillis - now.timeInMillis
+        while (midnight.timeInMillis <= now.timeInMillis) {
+            midnight.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        val diffMs = (midnight.timeInMillis - now.timeInMillis).coerceAtLeast(0L)
         val hours = diffMs / (1000 * 60 * 60)
         val minutes = (diffMs / (1000 * 60)) % 60
         val seconds = (diffMs / 1000) % 60

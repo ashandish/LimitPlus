@@ -26,12 +26,17 @@ class MidnightResetReceiver : BroadcastReceiver() {
         val action = intent.action
         Log.d("MidnightResetReceiver", "Triggered with action: $action")
 
+        val pendingResult = goAsync()
         val repository = LimitPlusApp.instance.repository
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 repository.onMidnightRollover()
             } catch (e: Exception) {
                 Log.e("MidnightResetReceiver", "Error during midnight rollover", e)
+            } finally {
+                try {
+                    pendingResult.finish()
+                } catch (_: Exception) {}
             }
         }
 
@@ -47,12 +52,17 @@ class MidnightResetReceiver : BroadcastReceiver() {
             try {
                 val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
 
+                val now = System.currentTimeMillis()
                 val midnight = Calendar.getInstance().apply {
-                    add(Calendar.DAY_OF_YEAR, 1)
                     set(Calendar.HOUR_OF_DAY, 0)
                     set(Calendar.MINUTE, 0)
                     set(Calendar.SECOND, 0)
                     set(Calendar.MILLISECOND, 0)
+                    add(Calendar.DAY_OF_YEAR, 1)
+                }
+
+                while (midnight.timeInMillis <= now) {
+                    midnight.add(Calendar.DAY_OF_YEAR, 1)
                 }
 
                 val intent = Intent(context, MidnightResetReceiver::class.java).apply {
@@ -87,6 +97,7 @@ class MidnightResetReceiver : BroadcastReceiver() {
                         pendingIntent
                     )
                 }
+                Log.d("MidnightResetReceiver", "Scheduled next midnight alarm for ${midnight.time}")
             } catch (e: Exception) {
                 Log.w("MidnightResetReceiver", "Could not schedule midnight alarm", e)
             }
