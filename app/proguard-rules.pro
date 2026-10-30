@@ -19,3 +19,7 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+-keep class com.example.data.entity.** { *; }
+-keep class com.example.data.dao.** { *; }
+-keep class com.example.data.db.** { *; }

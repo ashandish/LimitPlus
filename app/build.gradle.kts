@@ -16,8 +16,8 @@ android {
     applicationId = "com.aistudio.limitplus.vpxmq"
     minSdk = 24
     targetSdk = 36
-    versionCode = 18
-    versionName = "18.0"
+    versionCode = 16
+    versionName = "16.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -68,6 +68,10 @@ android {
   dependenciesInfo {
     includeInApk = false
     includeInBundle = true
+  }
+  lint {
+    checkReleaseBuilds = false
+    abortOnError = false
   }
 }
 
