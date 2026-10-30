@@ -62,7 +62,16 @@ class FloatingOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, S
 
         serviceScope.launch {
             LimitPlusApp.instance.repository.currentPrompt.collect { prompt ->
-                if (prompt == null) {
+                if (prompt == null || (currentShowingPackage != null && prompt.packageName != currentShowingPackage)) {
+                    removeOverlay()
+                    stopSelf()
+                }
+            }
+        }
+
+        serviceScope.launch {
+            LimitPlusApp.instance.repository.activeForegroundPackage.collect { fgPkg ->
+                if (currentShowingPackage != null && fgPkg != currentShowingPackage) {
                     removeOverlay()
                     stopSelf()
                 }

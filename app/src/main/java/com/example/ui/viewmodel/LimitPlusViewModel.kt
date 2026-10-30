@@ -139,7 +139,14 @@ class LimitPlusViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ActiveSessionUiState())
 
     init {
-        // Ticking loop for extension countdown and midnight timer
+        // Observe remaining active extension seconds directly from repository
+        viewModelScope.launch {
+            repository.activeExtensionRemainingSeconds.collect { remSec ->
+                _extensionRemainingSeconds.value = remSec ?: 0L
+            }
+        }
+
+        // Ticking loop for midnight timer and permissions
         viewModelScope.launch {
             while (isActive) {
                 // Automated rollover check if calendar day changed
@@ -150,23 +157,6 @@ class LimitPlusViewModel(
 
                 _permissions.value = checkPermissions()
                 _timeUntilMidnight.value = calculateTimeUntilMidnight()
-
-                val expiresAt = repository.activeExtensionExpiresAt.value
-                if (expiresAt != null) {
-                    val remainingMs = expiresAt - System.currentTimeMillis()
-                    val remainingSec = (remainingMs / 1000L).coerceAtLeast(0L)
-                    _extensionRemainingSeconds.value = remainingSec
-
-                    if (remainingSec <= 0L) {
-                        val pkg = repository.activeExtensionPackage.value
-                        if (pkg != null) {
-                            // Expired
-                            repository.onForegroundAppChanged(pkg)
-                        }
-                    }
-                } else {
-                    _extensionRemainingSeconds.value = 0L
-                }
 
                 delay(1000L)
             }

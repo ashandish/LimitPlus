@@ -89,7 +89,7 @@ class ScreenTimeMonitorService : Service() {
         serviceScope.launch {
             repository.currentPrompt.collect { prompt ->
                 if (prompt != null) {
-                    if (activeForegroundPackage == packageName) {
+                    if (activeForegroundPackage == packageName || activeForegroundPackage != prompt.packageName) {
                         dismissAllPrompts()
                         return@collect
                     }
@@ -104,7 +104,8 @@ class ScreenTimeMonitorService : Service() {
     private var lastDispatchedPromptPackage: String? = null
 
     private fun dispatchPromptToUser(prompt: PromptData) {
-        if (activeForegroundPackage == packageName) {
+        if (activeForegroundPackage == packageName || activeForegroundPackage != prompt.packageName) {
+            dismissAllPrompts()
             return
         }
         if (lastDispatchedPromptPackage == prompt.packageName) {
@@ -173,6 +174,9 @@ class ScreenTimeMonitorService : Service() {
 
                     if (currentForeground != activeForegroundPackage) {
                         activeForegroundPackage = currentForeground
+                        if (lastDispatchedPromptPackage != null && lastDispatchedPromptPackage != currentForeground) {
+                            dismissAllPrompts()
+                        }
                         repository.onForegroundAppChanged(currentForeground)
                         updateForegroundNotification(currentForeground)
                     } else if (currentForeground != null && currentForeground != packageName) {

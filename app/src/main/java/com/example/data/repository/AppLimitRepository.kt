@@ -71,6 +71,9 @@ class AppLimitRepository(
     private val _activeExtensionPackage = MutableStateFlow<String?>(null)
     val activeExtensionPackage: StateFlow<String?> = _activeExtensionPackage.asStateFlow()
 
+    private val _activeExtensionRemainingSeconds = MutableStateFlow<Long?>(null)
+    val activeExtensionRemainingSeconds: StateFlow<Long?> = _activeExtensionRemainingSeconds.asStateFlow()
+
     private val _activeExtensionExpiresAt = MutableStateFlow<Long?>(null)
     val activeExtensionExpiresAt: StateFlow<Long?> = _activeExtensionExpiresAt.asStateFlow()
 
@@ -251,8 +254,8 @@ class AppLimitRepository(
                     // If active in foreground and baseline is exhausted, check if prompt is needed
                     if (updated.isBaselineExhausted(config.baselineMinutes) && _activeForegroundPackage.value == config.packageName) {
                         val activeExt = _activeExtensionPackage.value
-                        val expiresAt = _activeExtensionExpiresAt.value
-                        val isUnderExtension = (activeExt == config.packageName && expiresAt != null && now < expiresAt)
+                        val remSec = _activeExtensionRemainingSeconds.value
+                        val isUnderExtension = (activeExt == config.packageName && remSec != null && remSec > 0L)
                         if (!isUnderExtension && _currentPrompt.value == null) {
                             showPrompt(
                                 PromptData(
@@ -324,7 +327,13 @@ class AppLimitRepository(
         _activeForegroundPackage.value = newPackage
 
         val activeExtPkg = _activeExtensionPackage.value
-        val extExpiresAt = _activeExtensionExpiresAt.value
+        val extRemainingSec = _activeExtensionRemainingSeconds.value
+
+        // If user navigated away from the app with the prompt, dismiss it immediately
+        val currentPromptData = _currentPrompt.value
+        if (currentPromptData != null && currentPromptData.packageName != newPackage) {
+            dismissPrompt()
+        }
 
         if (newPackage == null || newPackage == context.packageName) {
             return
@@ -337,11 +346,12 @@ class AppLimitRepository(
         val usage = getUsageForPackage(newPackage, today)
 
         val isUnderValidExtension = activeExtPkg == newPackage &&
-                extExpiresAt != null &&
-                System.currentTimeMillis() < extExpiresAt
+                extRemainingSec != null &&
+                extRemainingSec > 0L
 
         if (isUnderValidExtension) {
-            // App is allowed under current temporary 5m extension window
+            // App is allowed under current temporary 5m extension window.
+            // Timer is paused while user is away, and only counts down active foreground usage.
             return
         }
 
@@ -393,8 +403,8 @@ class AppLimitRepository(
             // Did we just hit baseline limit?
             if (updatedBaseline >= baselineMaxSeconds) {
                 val activeExt = _activeExtensionPackage.value
-                val expiresAt = _activeExtensionExpiresAt.value
-                val hasExtension = activeExt == packageName && expiresAt != null && now < expiresAt
+                val remSec = _activeExtensionRemainingSeconds.value
+                val hasExtension = activeExt == packageName && remSec != null && remSec > 0L
                 if (!hasExtension) {
                     showPrompt(
                         PromptData(
@@ -414,24 +424,31 @@ class AppLimitRepository(
             )
             usageDao.insertOrUpdate(updatedUsage)
 
-            // Check if extension is active or expired
+            // Check if extension is active
             val activeExt = _activeExtensionPackage.value
-            val expiresAt = _activeExtensionExpiresAt.value
-            if (activeExt == packageName && expiresAt != null && now < expiresAt) {
-                // Extension is currently active! Do NOT show prompt.
-            } else if (activeExt == packageName && expiresAt != null && now >= expiresAt) {
-                // 5m expired! Prompt reappears offering another 5-minute extension
-                _activeExtensionPackage.value = null
-                _activeExtensionExpiresAt.value = null
-                showPrompt(
-                    PromptData(
-                        packageName = packageName,
-                        appName = config.appName,
-                        baselineMinutes = config.baselineMinutes,
-                        isRelaunchAfterExhaustion = false
+            if (activeExt == packageName) {
+                val currentRemSec = _activeExtensionRemainingSeconds.value ?: 0L
+                val newRemSec = currentRemSec - elapsedSeconds
+                if (newRemSec > 0L) {
+                    // Extension timer actively counting down while user is in this app
+                    _activeExtensionRemainingSeconds.value = newRemSec
+                    _activeExtensionExpiresAt.value = now + (newRemSec * 1000L)
+                } else {
+                    // 5m active usage expired! Prompt reappears offering another 5-minute extension
+                    _activeExtensionPackage.value = null
+                    _activeExtensionRemainingSeconds.value = null
+                    _activeExtensionExpiresAt.value = null
+                    showPrompt(
+                        PromptData(
+                            packageName = packageName,
+                            appName = config.appName,
+                            baselineMinutes = config.baselineMinutes,
+                            isRelaunchAfterExhaustion = false
+                        )
                     )
-                )
-            } else if (activeExt != packageName) {
+                }
+            } else {
+                // Exhausted app with no active extension, show prompt
                 showPrompt(
                     PromptData(
                         packageName = packageName,
@@ -446,14 +463,15 @@ class AppLimitRepository(
 
     /**
      * User taps "Add +5 Minutes":
-     * Grants a temporary 5-minute extension window.
+     * Grants a temporary 5-minute extension window of active usage.
      * Baseline limit is strictly preserved!
      */
     fun grantFiveMinuteExtension(packageName: String, appName: String) {
         val now = System.currentTimeMillis()
-        val durationMs = 5 * 60 * 1000L
+        val extensionDurationSec = 5 * 60L // 300 seconds
         _activeExtensionPackage.value = packageName
-        _activeExtensionExpiresAt.value = now + durationMs
+        _activeExtensionRemainingSeconds.value = extensionDurationSec
+        _activeExtensionExpiresAt.value = now + (extensionDurationSec * 1000L)
         _currentPrompt.value = null
 
         scope.launch(Dispatchers.IO) {
@@ -479,6 +497,7 @@ class AppLimitRepository(
     fun closeTargetApp(packageName: String) {
         _currentPrompt.value = null
         _activeExtensionPackage.value = null
+        _activeExtensionRemainingSeconds.value = null
         _activeExtensionExpiresAt.value = null
         _activeForegroundPackage.value = null
 
@@ -585,6 +604,7 @@ class AppLimitRepository(
         }
         _currentDateFlow.value = newDate
         _activeExtensionPackage.value = null
+        _activeExtensionRemainingSeconds.value = null
         _activeExtensionExpiresAt.value = null
         _currentPrompt.value = null
         _activeForegroundPackage.value = null
@@ -598,6 +618,7 @@ class AppLimitRepository(
     suspend fun resetTodayUsage(date: String = getTodayDateString()) {
         usageDao.clearUsageForDate(date)
         _activeExtensionPackage.value = null
+        _activeExtensionRemainingSeconds.value = null
         _activeExtensionExpiresAt.value = null
         _currentPrompt.value = null
     }
