@@ -10,6 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -88,8 +89,8 @@ class MainActivity : ComponentActivity() {
                 // Initial install/launch permission check
                 LaunchedEffect(Unit) {
                     val currentPerms = viewModel.checkPermissions()
-                    // If essential permissions are missing on install, guide user to permissions tab
-                    if (!currentPerms.allEssentialGranted) {
+                    // If permissions are missing on install, guide user to permissions tab
+                    if (!currentPerms.allGranted) {
                         selectedTab = 2
                     }
                 }
@@ -125,14 +126,40 @@ class MainActivity : ComponentActivity() {
                                             )
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
+                                        val allPermissionsFixed = permissions.allGranted
                                         Surface(
                                             shape = RoundedCornerShape(6.dp),
-                                            color = if (sessionState.isUnderActiveExtension) EmeraldSuccess.copy(0.2f) else CyanPrimary.copy(0.2f)
+                                            color = if (!allPermissionsFixed) {
+                                                CoralAlert.copy(0.2f)
+                                            } else if (sessionState.isUnderActiveExtension) {
+                                                EmeraldSuccess.copy(0.2f)
+                                             } else {
+                                                CyanPrimary.copy(0.2f)
+                                            },
+                                            modifier = Modifier
+                                                .testTag("app_status_badge")
+                                                .clickable {
+                                                    if (!allPermissionsFixed) {
+                                                        selectedTab = 2
+                                                    }
+                                                }
                                         ) {
                                             Text(
-                                                text = if (sessionState.isUnderActiveExtension) "+5m Active" else "Active",
+                                                text = if (!allPermissionsFixed) {
+                                                    "Inactive"
+                                                } else if (sessionState.isUnderActiveExtension) {
+                                                    "+5m Active"
+                                                } else {
+                                                    "Active"
+                                                },
                                                 style = MaterialTheme.typography.labelSmall.copy(
-                                                    color = if (sessionState.isUnderActiveExtension) EmeraldSuccess else CyanLight,
+                                                    color = if (!allPermissionsFixed) {
+                                                        CoralAlert
+                                                    } else if (sessionState.isUnderActiveExtension) {
+                                                        EmeraldSuccess
+                                                    } else {
+                                                        CyanLight
+                                                    },
                                                     fontWeight = FontWeight.Bold,
                                                     fontSize = 9.5.sp
                                                 ),
@@ -209,7 +236,7 @@ class MainActivity : ComponentActivity() {
                                     onSearchQueryChange = viewModel::setSearchQuery,
                                     onToggleMonitored = viewModel::toggleMonitored,
                                     onUpdateBaseline = viewModel::updateBaseline,
-                                    hasMissingPermissions = !permissions.allEssentialGranted,
+                                    hasMissingPermissions = !permissions.allGranted,
                                     onNavigateToPermissions = { selectedTab = 2 }
                                 )
                                 1 -> SessionMonitorScreen(

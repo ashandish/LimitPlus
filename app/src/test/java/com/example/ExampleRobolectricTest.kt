@@ -160,4 +160,35 @@ class ExampleRobolectricTest {
     assertEquals(0L, afterRollover.baselineUsedSeconds)
     assertFalse(afterRollover.isBaselineExhausted(20))
   }
+
+  @Test
+  fun `all permissions check marks inactive when any permission is missing`() {
+    val missingOverlay = com.example.ui.viewmodel.PermissionsStatus(
+      hasUsageAccess = true,
+      hasOverlayPermission = false,
+      hasBatteryOptimizationIgnored = true
+    )
+    assertFalse(missingOverlay.allGranted)
+
+    val missingUsage = com.example.ui.viewmodel.PermissionsStatus(
+      hasUsageAccess = false,
+      hasOverlayPermission = true,
+      hasBatteryOptimizationIgnored = true
+    )
+    assertFalse(missingUsage.allGranted)
+
+    val missingBattery = com.example.ui.viewmodel.PermissionsStatus(
+      hasUsageAccess = true,
+      hasOverlayPermission = true,
+      hasBatteryOptimizationIgnored = false
+    )
+    assertFalse(missingBattery.allGranted)
+
+    val allFixed = com.example.ui.viewmodel.PermissionsStatus(
+      hasUsageAccess = true,
+      hasOverlayPermission = true,
+      hasBatteryOptimizationIgnored = true
+    )
+    assertTrue(allFixed.allGranted)
+  }
 }

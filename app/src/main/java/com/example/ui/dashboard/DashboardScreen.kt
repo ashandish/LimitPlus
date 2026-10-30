@@ -250,7 +250,8 @@ fun DashboardScreen(
                     AppLimitCard(
                         app = app,
                         onToggle = { isChecked -> onToggleMonitored(app.packageName, isChecked) },
-                        onEditBaseline = { selectedAppForBaseline = app }
+                        onEditBaseline = { selectedAppForBaseline = app },
+                        isPermissionsFixed = !hasMissingPermissions
                     )
                 }
             }
@@ -314,12 +315,13 @@ fun AppLimitCard(
     app: InstalledAppItem,
     onToggle: (Boolean) -> Unit,
     onEditBaseline: () -> Unit,
+    isPermissionsFixed: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val baselineSeconds = app.baselineMinutes * 60L
     val progress = (app.todayBaselineUsedSeconds.toFloat() / baselineSeconds.toFloat()).coerceIn(0f, 1f)
     val usedMinutes = app.todayBaselineUsedSeconds / 60L
-    val overtimeMinutes = app.todayOvertimeUsedSeconds / 60L
+    val showAsActive = app.isCurrentlyActive && isPermissionsFixed
 
     Card(
         modifier = modifier
@@ -327,17 +329,17 @@ fun AppLimitCard(
             .testTag("app_card_${app.packageName}"),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (app.isCurrentlyActive) Color(0xFF18233C) else Color(0xFF131D31)
+            containerColor = if (showAsActive) Color(0xFF18233C) else Color(0xFF131D31)
         ),
         border = CardDefaults.outlinedCardBorder().copy(
-            brush = if (app.isCurrentlyActive) {
+            brush = if (showAsActive) {
                 Brush.horizontalGradient(listOf(CyanPrimary, IndigoSecondary))
             } else if (app.isMonitored && app.isBaselineExhausted) {
                 Brush.horizontalGradient(listOf(CoralAlert.copy(0.5f), Color.Transparent))
             } else {
                 Brush.horizontalGradient(listOf(Color(0xFF28385A), Color(0xFF1B2844)))
             },
-            width = if (app.isCurrentlyActive) 1.5.dp else 1.dp
+            width = if (showAsActive) 1.5.dp else 1.dp
         )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -380,7 +382,7 @@ fun AppLimitCard(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        if (app.isCurrentlyActive) {
+                        if (showAsActive) {
                             Spacer(modifier = Modifier.width(6.dp))
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
@@ -485,8 +487,8 @@ fun AppLimitCard(
                         trackColor = Color(0xFF1E2942)
                     )
 
-                    // Overtime & Extension Badge if any
-                    if (app.todayOvertimeUsedSeconds > 0 || app.extensionsCountToday > 0) {
+                    // Extension Badge if any
+                    if (app.extensionsCountToday > 0) {
                         Spacer(modifier = Modifier.height(10.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -512,7 +514,7 @@ fun AppLimitCard(
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "+${overtimeMinutes}m overtime (${app.extensionsCountToday} extensions)",
+                                        text = if (app.extensionsCountToday == 1) "1 extension today" else "${app.extensionsCountToday} extensions today",
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             color = EmeraldSuccess,
                                             fontWeight = FontWeight.SemiBold

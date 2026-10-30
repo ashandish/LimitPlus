@@ -10,6 +10,9 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.app.AppOpsManager
+import android.os.PowerManager
+import android.os.Process
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import com.example.LimitPlusApp
@@ -42,7 +45,8 @@ class ScreenTimeMonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         cacheLauncherPackages()
-        startForeground(NOTIFICATION_ID, buildForegroundNotification("Active: Monitoring daily baselines"))
+        val initialText = if (areAllPermissionsFixed()) "Active: Monitoring daily limits" else "Inactive: Permissions required"
+        startForeground(NOTIFICATION_ID, buildForegroundNotification(initialText))
         observePrompts()
         MidnightResetReceiver.scheduleNextMidnightAlarm(this)
     }
@@ -239,10 +243,33 @@ class ScreenTimeMonitorService : Service() {
         return current
     }
 
+    private fun areAllPermissionsFixed(): Boolean {
+        return try {
+            val appOps = getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager ?: return false
+            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
+            } else {
+                @Suppress("DEPRECATION")
+                appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
+            }
+            val hasUsage = mode == AppOpsManager.MODE_ALLOWED
+            val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            val hasBattery = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && powerManager != null) {
+                powerManager.isIgnoringBatteryOptimizations(packageName)
+            } else true
+            hasUsage && hasOverlay && hasBattery
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun updateForegroundNotification(activePkg: String?) {
         try {
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val text = if (activePkg != null) {
+            val text = if (!areAllPermissionsFixed()) {
+                "Inactive: Permissions required"
+            } else if (activePkg != null) {
                 val appName = try {
                     val pm = packageManager
                     val info = pm.getApplicationInfo(activePkg, 0)
