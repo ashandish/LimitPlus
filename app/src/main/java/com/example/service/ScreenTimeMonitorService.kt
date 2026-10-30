@@ -13,8 +13,11 @@ import android.os.IBinder
 import android.app.AppOpsManager
 import android.os.PowerManager
 import android.os.Process
+import android.content.pm.PackageManager
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.example.LimitPlusApp
 import com.example.MainActivity
 import com.example.R
@@ -253,12 +256,27 @@ class ScreenTimeMonitorService : Service() {
                 appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
             }
             val hasUsage = mode == AppOpsManager.MODE_ALLOWED
-            val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
-            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
-            val hasBattery = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && powerManager != null) {
-                powerManager.isIgnoringBatteryOptimizations(packageName)
+            val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    Settings.canDrawOverlays(this)
+                } catch (_: Exception) {
+                    false
+                }
             } else true
-            hasUsage && hasOverlay && hasBattery
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            val hasBattery = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    powerManager?.isIgnoringBatteryOptimizations(packageName) == true
+                } catch (_: Exception) {
+                    false
+                }
+            } else true
+            val hasNotification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+            } else {
+                NotificationManagerCompat.from(this).areNotificationsEnabled()
+            }
+            hasUsage && hasOverlay && hasBattery && hasNotification
         } catch (_: Exception) {
             false
         }

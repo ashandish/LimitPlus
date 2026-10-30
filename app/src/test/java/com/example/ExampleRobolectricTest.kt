@@ -166,28 +166,40 @@ class ExampleRobolectricTest {
     val missingOverlay = com.example.ui.viewmodel.PermissionsStatus(
       hasUsageAccess = true,
       hasOverlayPermission = false,
-      hasBatteryOptimizationIgnored = true
+      hasBatteryOptimizationIgnored = true,
+      hasNotificationPermission = true
     )
     assertFalse(missingOverlay.allGranted)
 
     val missingUsage = com.example.ui.viewmodel.PermissionsStatus(
       hasUsageAccess = false,
       hasOverlayPermission = true,
-      hasBatteryOptimizationIgnored = true
+      hasBatteryOptimizationIgnored = true,
+      hasNotificationPermission = true
     )
     assertFalse(missingUsage.allGranted)
 
     val missingBattery = com.example.ui.viewmodel.PermissionsStatus(
       hasUsageAccess = true,
       hasOverlayPermission = true,
-      hasBatteryOptimizationIgnored = false
+      hasBatteryOptimizationIgnored = false,
+      hasNotificationPermission = true
     )
     assertFalse(missingBattery.allGranted)
+
+    val missingNotification = com.example.ui.viewmodel.PermissionsStatus(
+      hasUsageAccess = true,
+      hasOverlayPermission = true,
+      hasBatteryOptimizationIgnored = true,
+      hasNotificationPermission = false
+    )
+    assertFalse(missingNotification.allGranted)
 
     val allFixed = com.example.ui.viewmodel.PermissionsStatus(
       hasUsageAccess = true,
       hasOverlayPermission = true,
-      hasBatteryOptimizationIgnored = true
+      hasBatteryOptimizationIgnored = true,
+      hasNotificationPermission = true
     )
     assertTrue(allFixed.allGranted)
   }

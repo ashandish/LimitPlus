@@ -33,13 +33,13 @@ data class PermissionsStatus(
     val hasUsageAccess: Boolean = false,
     val hasOverlayPermission: Boolean = false,
     val hasBatteryOptimizationIgnored: Boolean = false,
-    val hasNotificationPermission: Boolean = true
+    val hasNotificationPermission: Boolean = false
 ) {
     val allEssentialGranted: Boolean
         get() = hasUsageAccess && hasOverlayPermission
 
     val allGranted: Boolean
-        get() = hasUsageAccess && hasOverlayPermission && hasBatteryOptimizationIgnored
+        get() = hasUsageAccess && hasOverlayPermission && hasBatteryOptimizationIgnored && hasNotificationPermission
 }
 
 data class ActiveSessionUiState(
@@ -216,22 +216,43 @@ class LimitPlusViewModel(
         }
     }
 
+    fun refreshPermissions() {
+        _permissions.value = checkPermissions()
+    }
+
     fun checkPermissions(): PermissionsStatus {
         val hasUsage = checkUsageAccess()
         val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Settings.canDrawOverlays(context)
+            try {
+                Settings.canDrawOverlays(context)
+            } catch (_: Exception) {
+                false
+            }
         } else true
 
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-        val hasBattery = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && powerManager != null) {
-            powerManager.isIgnoringBatteryOptimizations(context.packageName)
+        val hasBattery = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                powerManager?.isIgnoringBatteryOptimizations(context.packageName) == true
+            } catch (_: Exception) {
+                false
+            }
         } else true
+
+        val hasNotification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.POST_NOTIFICATIONS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        } else {
+            androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
+        }
 
         return PermissionsStatus(
             hasUsageAccess = hasUsage,
             hasOverlayPermission = hasOverlay,
             hasBatteryOptimizationIgnored = hasBattery,
-            hasNotificationPermission = true
+            hasNotificationPermission = hasNotification
         )
     }
 

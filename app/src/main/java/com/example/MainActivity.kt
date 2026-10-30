@@ -50,6 +50,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.dashboard.DashboardScreen
 import com.example.ui.monitor.SessionMonitorScreen
@@ -85,6 +87,16 @@ class MainActivity : ComponentActivity() {
                 val recentLogs by viewModel.recentLogs.collectAsState()
 
                 var selectedTab by remember { mutableIntStateOf(0) }
+
+                val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.RequestPermission()
+                ) {
+                    viewModel.refreshPermissions()
+                }
+
+                LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+                    viewModel.refreshPermissions()
+                }
 
                 // Initial install/launch permission check
                 LaunchedEffect(Unit) {
@@ -139,18 +151,16 @@ class MainActivity : ComponentActivity() {
                                             modifier = Modifier
                                                 .testTag("app_status_badge")
                                                 .clickable {
-                                                    if (!allPermissionsFixed) {
-                                                        selectedTab = 2
-                                                    }
+                                                    selectedTab = 2
                                                 }
                                         ) {
                                             Text(
                                                 text = if (!allPermissionsFixed) {
-                                                    "Inactive"
+                                                    "(Inactive)"
                                                 } else if (sessionState.isUnderActiveExtension) {
-                                                    "+5m Active"
+                                                    "(+5m Active)"
                                                 } else {
-                                                    "Active"
+                                                    "(Active)"
                                                 },
                                                 style = MaterialTheme.typography.labelSmall.copy(
                                                     color = if (!allPermissionsFixed) {
@@ -247,7 +257,12 @@ class MainActivity : ComponentActivity() {
                                     onCloseApp = viewModel::closeTargetApp
                                 )
                                 2 -> PermissionsScreen(
-                                    permissions = permissions
+                                    permissions = permissions,
+                                    onRequestNotificationPermission = {
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        }
+                                    }
                                 )
                             }
                         }

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -147,6 +148,36 @@ fun PermissionsScreen(
                             context.startActivity(intent)
                         } catch (_: Exception) {
                             val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            context.startActivity(fallback)
+                        }
+                    }
+                }
+            )
+        }
+
+        // 4. Notifications
+        item {
+            PermissionItemCard(
+                title = "Notifications",
+                description = "Required to keep background monitoring running reliably and alert you when limits are reached.",
+                isGranted = permissions.hasNotificationPermission,
+                icon = Icons.Default.Notifications,
+                actionLabel = "Enable Notifications",
+                onAction = {
+                    if (onRequestNotificationPermission != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        onRequestNotificationPermission()
+                    } else {
+                        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        try {
+                            context.startActivity(intent)
+                        } catch (_: Exception) {
+                            val fallback = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.parse("package:${context.packageName}")
                                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
                             }
                             context.startActivity(fallback)
