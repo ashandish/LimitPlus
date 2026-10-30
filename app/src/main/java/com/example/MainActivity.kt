@@ -137,45 +137,6 @@ class MainActivity : ComponentActivity() {
                                                 color = Color.White
                                             )
                                         )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        val allPermissionsFixed = permissions.allGranted
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = if (!allPermissionsFixed) {
-                                                CoralAlert.copy(0.2f)
-                                            } else if (sessionState.isUnderActiveExtension) {
-                                                EmeraldSuccess.copy(0.2f)
-                                             } else {
-                                                CyanPrimary.copy(0.2f)
-                                            },
-                                            modifier = Modifier
-                                                .testTag("app_status_badge")
-                                                .clickable {
-                                                    selectedTab = 2
-                                                }
-                                        ) {
-                                            Text(
-                                                text = if (!allPermissionsFixed) {
-                                                    "(Inactive)"
-                                                } else if (sessionState.isUnderActiveExtension) {
-                                                    "(+5m Active)"
-                                                } else {
-                                                    "(Active)"
-                                                },
-                                                style = MaterialTheme.typography.labelSmall.copy(
-                                                    color = if (!allPermissionsFixed) {
-                                                        CoralAlert
-                                                    } else if (sessionState.isUnderActiveExtension) {
-                                                        EmeraldSuccess
-                                                    } else {
-                                                        CyanLight
-                                                    },
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 9.5.sp
-                                                ),
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
-                                        }
                                     }
                                 },
                                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(

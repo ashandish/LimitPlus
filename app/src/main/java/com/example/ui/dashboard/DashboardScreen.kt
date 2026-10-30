@@ -382,23 +382,6 @@ fun AppLimitCard(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        if (showAsActive) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = CyanPrimary.copy(alpha = 0.2f)
-                            ) {
-                                Text(
-                                    text = "ACTIVE",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        color = CyanLight,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 9.sp
-                                    ),
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
                     }
                     Text(
                         text = app.packageName,
