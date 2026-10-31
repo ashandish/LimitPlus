@@ -24,8 +24,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.HourglassEmpty
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -162,47 +160,27 @@ fun MidnightResetCard(
             width = 1.dp
         )
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(IndigoSecondary.copy(alpha = 0.2f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = null,
-                    tint = IndigoLight,
-                    modifier = Modifier.size(24.dp)
+            Text(
+                text = "Daily Midnight Reset",
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
                 )
-            }
-
-            Spacer(modifier = Modifier.width(14.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Daily Midnight Reset",
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Usage resets in $timeUntilMidnight.",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = Color(0xFF94A3B8),
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
                 )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "Usage resets in $timeUntilMidnight.",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = Color(0xFF94A3B8),
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp
-                    )
-                )
-            }
+            )
         }
     }
 }
