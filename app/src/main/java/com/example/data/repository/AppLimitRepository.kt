@@ -81,8 +81,17 @@ class AppLimitRepository(
     private val _currentPrompt = MutableStateFlow<PromptData?>(null)
     val currentPrompt: StateFlow<PromptData?> = _currentPrompt.asStateFlow()
 
+    fun getStartOfTodayTimestamp(): Long {
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        return cal.timeInMillis
+    }
+
     val allConfigsFlow: Flow<List<AppLimitConfig>> = configDao.getAllFlow()
-    val recentLogsFlow: Flow<List<ExtensionSessionLog>> = logDao.getRecentLogsFlow()
 
     private val _currentDateFlow = MutableStateFlow(getTodayDateString())
     val currentDateFlow: StateFlow<String> = _currentDateFlow.asStateFlow()
@@ -90,6 +99,12 @@ class AppLimitRepository(
     @OptIn(ExperimentalCoroutinesApi::class)
     val todayUsageFlow: Flow<List<DailyAppUsage>> = _currentDateFlow.flatMapLatest { date ->
         usageDao.getAllForDateFlow(date)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val recentLogsFlow: Flow<List<ExtensionSessionLog>> = _currentDateFlow.flatMapLatest {
+        val startOfDay = getStartOfTodayTimestamp()
+        logDao.getLogsSinceFlow(startOfDay)
     }
 
     fun getTodayDateString(): String {
@@ -118,6 +133,11 @@ class AppLimitRepository(
             _activeExtensionRemainingSeconds.value = null
             prefs.edit().putBoolean("corrupted_usage_purged_v27", true).apply()
         }
+
+        // Purge any past day extension logs so the Monitor tab shows only the running day
+        try {
+            logDao.deleteLogsBefore(getStartOfTodayTimestamp())
+        } catch (_: Exception) {}
 
         // 1. Purge any database records for apps that are not installed on the user's phone
         val existing = configDao.getAllList()
@@ -490,9 +510,12 @@ class AppLimitRepository(
      */
     suspend fun onMidnightRollover() {
         val newDate = getTodayDateString()
+        val startOfNewDay = getStartOfTodayTimestamp()
         try {
             // Clear any consumed usage in database for the new date so all limits reset to 0 fresh
             usageDao.clearUsageForDate(newDate)
+            // Purge previous day extension logs from storage so only the running day's extensions are kept
+            logDao.deleteLogsBefore(startOfNewDay)
         } catch (e: Exception) {
             Log.w("AppLimitRepository", "Failed clearing usage for new date $newDate", e)
         }
@@ -511,6 +534,9 @@ class AppLimitRepository(
      */
     suspend fun resetTodayUsage(date: String = getTodayDateString()) {
         usageDao.clearUsageForDate(date)
+        try {
+            logDao.deleteLogsBefore(getStartOfTodayTimestamp())
+        } catch (_: Exception) {}
         _activeExtensionPackage.value = null
         _activeExtensionRemainingSeconds.value = null
         _activeExtensionExpiresAt.value = null
