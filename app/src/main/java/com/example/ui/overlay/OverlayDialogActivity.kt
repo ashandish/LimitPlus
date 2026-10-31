@@ -33,18 +33,10 @@ class OverlayDialogActivity : ComponentActivity() {
         val baselineMinutes = intent.getIntExtra(EXTRA_BASELINE_MINUTES, 20)
         val isRelaunch = intent.getBooleanExtra(EXTRA_IS_RELAUNCH, false)
 
-        // Auto-dismiss if prompt is dismissed/cleared or user switches to another app
+        // Auto-dismiss if prompt is dismissed/cleared or for a different app
         lifecycleScope.launch {
             LimitPlusApp.instance.repository.currentPrompt.collect { prompt ->
                 if (prompt == null || prompt.packageName != packageName) {
-                    finishAndRemoveTask()
-                }
-            }
-        }
-
-        lifecycleScope.launch {
-            LimitPlusApp.instance.repository.activeForegroundPackage.collect { fgPkg ->
-                if (fgPkg != packageName) {
                     finishAndRemoveTask()
                 }
             }

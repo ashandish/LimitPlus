@@ -68,15 +68,6 @@ class FloatingOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                 }
             }
         }
-
-        serviceScope.launch {
-            LimitPlusApp.instance.repository.activeForegroundPackage.collect { fgPkg ->
-                if (currentShowingPackage != null && fgPkg != currentShowingPackage) {
-                    removeOverlay()
-                    stopSelf()
-                }
-            }
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

@@ -195,41 +195,13 @@ fun MidnightResetCard(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Resets usage automatically in $timeUntilMidnight (at 00:00).",
+                    text = "Usage resets in $timeUntilMidnight.",
                     style = MaterialTheme.typography.bodySmall.copy(
                         color = Color(0xFF94A3B8),
-                        fontSize = 11.5.sp
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
                     )
                 )
-            }
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = EmeraldSuccess.copy(alpha = 0.12f),
-                border = BorderStroke(1.dp, EmeraldSuccess.copy(alpha = 0.35f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = "Automated and locked",
-                        tint = EmeraldSuccess,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Text(
-                        text = "Auto",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = EmeraldSuccess,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp
-                        )
-                    )
-                }
             }
         }
     }

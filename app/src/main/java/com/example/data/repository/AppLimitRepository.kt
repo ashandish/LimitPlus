@@ -39,7 +39,8 @@ data class PromptData(
     val packageName: String,
     val appName: String,
     val baselineMinutes: Int,
-    val isRelaunchAfterExhaustion: Boolean
+    val isRelaunchAfterExhaustion: Boolean,
+    val promptId: Long = System.currentTimeMillis()
 )
 
 data class InstalledAppItem(
@@ -107,6 +108,16 @@ class AppLimitRepository(
      */
     suspend fun seedDefaultAndInstalledApps() {
         val pm = context.packageManager
+
+        // One-time purge of any phantom/inflated usage from previous flawed system sync
+        val prefs = context.getSharedPreferences("limitplus_sync_fix", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("corrupted_usage_purged_v27", false)) {
+            usageDao.clearUsageForDate(getTodayDateString())
+            _currentPrompt.value = null
+            _activeExtensionPackage.value = null
+            _activeExtensionRemainingSeconds.value = null
+            prefs.edit().putBoolean("corrupted_usage_purged_v27", true).apply()
+        }
 
         // 1. Purge any database records for apps that are not installed on the user's phone
         val existing = configDao.getAllList()
@@ -205,118 +216,7 @@ class AppLimitRepository(
         return newUsage
     }
 
-    /**
-     * Synchronizes authoritative daily screen time metrics from Android's UsageStatsManager.
-     * This ensures that any time spent in YouTube, Facebook, Instagram, etc. is immediately
-     * reflected in LimitPlus, even before or between polling ticks.
-     */
-    /**
-     * Synchronizes authoritative daily screen time metrics from Android's UsageEvents.
-     * Crucially, queries events strictly between today's startOfDay (00:00:00) and now,
-     * ensuring yesterday's usage interval buckets NEVER bleed into the new day's usage.
-     */
-    suspend fun syncWithSystemUsageStats(usageStatsManager: UsageStatsManager?) {
-        if (usageStatsManager == null) return
-        val cal = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-        val startOfDay = cal.timeInMillis
-        val now = System.currentTimeMillis()
-        if (now <= startOfDay) return
 
-        try {
-            val usageByPkg = queryTodayForegroundSeconds(usageStatsManager, startOfDay, now)
-            if (usageByPkg.isEmpty()) return
-
-            val configs = configDao.getAllList().filter { it.isMonitored }
-            val today = getTodayDateString()
-
-            for (config in configs) {
-                val systemTotalSeconds = usageByPkg[config.packageName] ?: continue
-                if (systemTotalSeconds <= 0L) continue
-
-                val existing = getUsageForPackage(config.packageName, today)
-                val baselineMaxSeconds = config.baselineMinutes * 60L
-                val calculatedBaseline = systemTotalSeconds.coerceAtMost(baselineMaxSeconds)
-                val calculatedOvertime = (systemTotalSeconds - baselineMaxSeconds).coerceAtLeast(0L)
-
-                if (calculatedBaseline > existing.baselineUsedSeconds || calculatedOvertime > existing.overtimeUsedSeconds) {
-                    val updated = existing.copy(
-                        baselineUsedSeconds = maxOf(existing.baselineUsedSeconds, calculatedBaseline),
-                        overtimeUsedSeconds = maxOf(existing.overtimeUsedSeconds, calculatedOvertime),
-                        lastActiveTimestamp = now
-                    )
-                    usageDao.insertOrUpdate(updated)
-
-                    // If active in foreground and baseline is exhausted, check if prompt is needed
-                    if (updated.isBaselineExhausted(config.baselineMinutes) && _activeForegroundPackage.value == config.packageName) {
-                        val activeExt = _activeExtensionPackage.value
-                        val remSec = _activeExtensionRemainingSeconds.value
-                        val isUnderExtension = (activeExt == config.packageName && remSec != null && remSec > 0L)
-                        if (!isUnderExtension && _currentPrompt.value == null) {
-                            showPrompt(
-                                PromptData(
-                                    packageName = config.packageName,
-                                    appName = config.appName,
-                                    baselineMinutes = config.baselineMinutes,
-                                    isRelaunchAfterExhaustion = false
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.w("AppLimitRepository", "Error syncing system usage stats", e)
-        }
-    }
-
-    /**
-     * Accurately calculates total foreground time for each package strictly since today's 00:00:00.
-     * Does NOT use coarse INTERVAL_DAILY buckets which aggregate previous days.
-     */
-    private fun queryTodayForegroundSeconds(
-        usageStatsManager: UsageStatsManager,
-        startOfDay: Long,
-        now: Long
-    ): Map<String, Long> {
-        val usageMap = mutableMapOf<String, Long>()
-        val resumeMap = mutableMapOf<String, Long>()
-        try {
-            val events = usageStatsManager.queryEvents(startOfDay, now) ?: return emptyMap()
-            val event = UsageEvents.Event()
-            while (events.hasNextEvent()) {
-                events.getNextEvent(event)
-                val pkg = event.packageName ?: continue
-                val timestamp = event.timeStamp
-                when (event.eventType) {
-                    UsageEvents.Event.ACTIVITY_RESUMED -> {
-                        resumeMap[pkg] = timestamp.coerceAtLeast(startOfDay)
-                    }
-                    UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> {
-                        val start = resumeMap.remove(pkg) ?: startOfDay
-                        if (timestamp > start) {
-                            val durationSec = (timestamp - start) / 1000L
-                            usageMap[pkg] = (usageMap[pkg] ?: 0L) + durationSec
-                        }
-                    }
-                }
-            }
-            // For any app currently in foreground (resumed without pause yet today)
-            for ((pkg, start) in resumeMap) {
-                if (now > start) {
-                    val durationSec = (now - start) / 1000L
-                    usageMap[pkg] = (usageMap[pkg] ?: 0L) + durationSec
-                }
-            }
-        } catch (e: Exception) {
-            Log.w("AppLimitRepository", "Error querying UsageEvents for today", e)
-        }
-        return usageMap
-    }
 
     /**
      * Core Time Tracking Engine:
@@ -573,12 +473,6 @@ class AppLimitRepository(
     }
 
     fun showPrompt(data: PromptData) {
-        val current = _currentPrompt.value
-        // If the prompt is already displayed for this target package, do not re-emit.
-        // This keeps the modal popup completely still and eliminates jitter/movement.
-        if (current != null && current.packageName == data.packageName) {
-            return
-        }
         _currentPrompt.value = data
     }
 

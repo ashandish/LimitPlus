@@ -285,7 +285,14 @@ class LimitPlusViewModel(
         val hours = diffMs / (1000 * 60 * 60)
         val minutes = (diffMs / (1000 * 60)) % 60
         val seconds = (diffMs / 1000) % 60
-        return String.format("%02dh %02dm %02ds", hours, minutes, seconds)
+
+        return if (hours > 0) {
+            "${hours}h ${minutes}m ${seconds}s"
+        } else if (minutes > 0) {
+            "${minutes}m ${seconds}s"
+        } else {
+            "${seconds}s"
+        }
     }
 
     // --- Simulator & Testing Helpers ---

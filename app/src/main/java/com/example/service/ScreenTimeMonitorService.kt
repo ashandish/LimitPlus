@@ -39,6 +39,7 @@ class ScreenTimeMonitorService : Service() {
 
     // Track active foreground state reliably across event gaps
     private var activeForegroundPackage: String? = null
+    private var cachedDetectedPackage: String? = null
     private var lastCheckTime: Long = System.currentTimeMillis()
     private var lastEventQueryTime: Long = System.currentTimeMillis() - 30_000L
     private val launcherPackages = mutableSetOf<String>()
@@ -89,8 +90,7 @@ class ScreenTimeMonitorService : Service() {
         serviceScope.launch {
             repository.currentPrompt.collect { prompt ->
                 if (prompt != null) {
-                    if (activeForegroundPackage == packageName || activeForegroundPackage != prompt.packageName) {
-                        dismissAllPrompts()
+                    if (activeForegroundPackage == packageName) {
                         return@collect
                     }
                     dispatchPromptToUser(prompt)
@@ -102,17 +102,18 @@ class ScreenTimeMonitorService : Service() {
     }
 
     private var lastDispatchedPromptPackage: String? = null
+    private var lastDispatchedPromptId: Long = 0L
 
     private fun dispatchPromptToUser(prompt: PromptData) {
-        if (activeForegroundPackage == packageName || activeForegroundPackage != prompt.packageName) {
-            dismissAllPrompts()
+        if (activeForegroundPackage == packageName) {
             return
         }
-        if (lastDispatchedPromptPackage == prompt.packageName) {
+        if (lastDispatchedPromptPackage == prompt.packageName && lastDispatchedPromptId == prompt.promptId) {
             // Already dispatched and showing, keep it still on screen
             return
         }
         lastDispatchedPromptPackage = prompt.packageName
+        lastDispatchedPromptId = prompt.promptId
 
         // Single Centered Modal Popup Notification:
         // Priority 1: Floating system overlay window centered over the active app
@@ -127,7 +128,7 @@ class ScreenTimeMonitorService : Service() {
         } else {
             // Priority 2: Translucent activity prompt centered on screen
             val dialogIntent = Intent(this, OverlayDialogActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 putExtra(OverlayDialogActivity.EXTRA_PACKAGE_NAME, prompt.packageName)
                 putExtra(OverlayDialogActivity.EXTRA_APP_NAME, prompt.appName)
                 putExtra(OverlayDialogActivity.EXTRA_BASELINE_MINUTES, prompt.baselineMinutes)
@@ -139,6 +140,7 @@ class ScreenTimeMonitorService : Service() {
 
     private fun dismissAllPrompts() {
         lastDispatchedPromptPackage = null
+        lastDispatchedPromptId = 0L
         try {
             stopService(Intent(this, FloatingOverlayService::class.java))
         } catch (_: Exception) {}
@@ -150,8 +152,6 @@ class ScreenTimeMonitorService : Service() {
         monitorJob = serviceScope.launch {
             val repository = LimitPlusApp.instance.repository
             val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
-            var syncCounter = 0
-
             var lastRecordedDate = repository.getTodayDateString()
 
             while (isActive) {
@@ -161,6 +161,7 @@ class ScreenTimeMonitorService : Service() {
                     if (todayDate != lastRecordedDate) {
                         lastRecordedDate = todayDate
                         activeForegroundPackage = null
+                        cachedDetectedPackage = null
                         lastCheckTime = System.currentTimeMillis()
                         dismissAllPrompts()
                         repository.onMidnightRollover()
@@ -173,21 +174,16 @@ class ScreenTimeMonitorService : Service() {
                     lastCheckTime = now
 
                     if (currentForeground != activeForegroundPackage) {
+                        val previousForeground = activeForegroundPackage
                         activeForegroundPackage = currentForeground
-                        if (lastDispatchedPromptPackage != null && lastDispatchedPromptPackage != currentForeground) {
+                        if (previousForeground != null && previousForeground != currentForeground) {
+                            repository.dismissPrompt()
                             dismissAllPrompts()
                         }
                         repository.onForegroundAppChanged(currentForeground)
                         updateForegroundNotification(currentForeground)
                     } else if (currentForeground != null && currentForeground != packageName) {
                         repository.recordUsageTick(currentForeground, elapsedSeconds)
-                    }
-
-                    // Periodically sync authoritative system usage stats from Android OS
-                    syncCounter++
-                    if (syncCounter >= 15) {
-                        syncCounter = 0
-                        repository.syncWithSystemUsageStats(usageStatsManager)
                     }
                 } catch (_: Exception) { }
 
@@ -223,7 +219,7 @@ class ScreenTimeMonitorService : Service() {
             lastEventQueryTime = now
 
             if (latestResumedPkg != null) {
-                activeForegroundPackage = latestResumedPkg
+                cachedDetectedPackage = latestResumedPkg
             }
         } catch (_: Exception) {}
 
@@ -238,12 +234,12 @@ class ScreenTimeMonitorService : Service() {
                 val mostRecent = statsList.maxByOrNull { it.lastTimeUsed }
 
                 if (mostRecent != null && (now - mostRecent.lastTimeUsed) < 4_000L) {
-                    activeForegroundPackage = mostRecent.packageName
+                    cachedDetectedPackage = mostRecent.packageName
                 }
             }
         } catch (_: Exception) {}
 
-        val current = activeForegroundPackage
+        val current = cachedDetectedPackage
         if (current == null || current == packageName || isLauncherOrSystem(current)) {
             return null
         }
