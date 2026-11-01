@@ -370,24 +370,13 @@ fun AppLimitCard(
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                // App Name & Package
+                // App Name
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = app.appName,
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.White
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
                     Text(
-                        text = app.packageName,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = Color(0xFF64748B),
-                            fontSize = 11.sp
+                        text = app.appName,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
                         ),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis

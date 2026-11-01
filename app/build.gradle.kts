@@ -16,8 +16,8 @@ android {
     applicationId = "com.aistudio.limitplus.vpxmq"
     minSdk = 24
     targetSdk = 36
-    versionCode = 37
-    versionName = "37.0"
+    versionCode = 40
+    versionName = "40.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
