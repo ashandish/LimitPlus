@@ -20,6 +20,6 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 
--keep class com.example.data.entity.** { *; }
--keep class com.example.data.dao.** { *; }
--keep class com.example.data.db.** { *; }
+-keep class com.limitplus.app.data.entity.** { *; }
+-keep class com.limitplus.app.data.dao.** { *; }
+-keep class com.limitplus.app.data.db.** { *; }

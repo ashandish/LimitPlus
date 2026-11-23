@@ -1,0 +1,26 @@
+package com.limitplus.app.data.dao
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import com.limitplus.app.data.entity.ExtensionSessionLog
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface ExtensionLogDao {
+    @Query("SELECT * FROM extension_logs WHERE timestamp >= :sinceTimestamp ORDER BY timestamp DESC")
+    fun getLogsSinceFlow(sinceTimestamp: Long): Flow<List<ExtensionSessionLog>>
+
+    @Query("SELECT * FROM extension_logs ORDER BY timestamp DESC LIMIT 50")
+    fun getRecentLogsFlow(): Flow<List<ExtensionSessionLog>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(log: ExtensionSessionLog)
+
+    @Query("DELETE FROM extension_logs WHERE timestamp < :cutoffTimestamp")
+    suspend fun deleteLogsBefore(cutoffTimestamp: Long)
+
+    @Query("DELETE FROM extension_logs")
+    suspend fun clearLogs()
+}

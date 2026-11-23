@@ -9,15 +9,15 @@ plugins {
 }
 
 android {
-  namespace = "com.example"
+  namespace = "com.limitplus.app"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
     applicationId = "com.aistudio.limitplus.vpxmq"
     minSdk = 24
     targetSdk = 36
-    versionCode = 40
-    versionName = "40.0"
+    versionCode = 52
+    versionName = "1.2.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -97,7 +97,7 @@ dependencies {
   // implementation(libs.androidx.camera.lifecycle)
   // implementation(libs.androidx.camera.view)
   implementation(libs.androidx.compose.material.icons.core)
-  implementation(libs.androidx.compose.material.icons.extended)
+  // implementation(libs.androidx.compose.material.icons.extended)
   implementation(libs.androidx.compose.material3)
   implementation(libs.androidx.compose.ui)
   implementation(libs.androidx.compose.ui.graphics)

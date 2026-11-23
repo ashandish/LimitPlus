@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">LimitPlus</string>
+    <string name="settings_version_footer">v%1$s (Build %2$d)</string>
 </resources>
